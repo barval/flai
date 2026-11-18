@@ -43,12 +43,18 @@ def chat():
         "model_name"
     ) or current_app.config.get("EMBEDDING_MODEL", "")
 
+    current_session = session.get("current_session")
+    current_session_kind = next(
+        (row.get("scheduler_kind") for row in sessions if row.get("id") == current_session), None
+    )
+
     response = make_response(
         render_template(
             "chat.html",
             sessions=sessions,
             documents=documents,
-            current_session=session.get("current_session"),
+            current_session=current_session,
+            current_session_kind=current_session_kind,
             embedding_model=embedding_model,
         )
     )

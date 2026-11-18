@@ -118,12 +118,65 @@ def wait_for_service(
     return False
 
 
+# The routing rule for network questions. It is injected ONLY when the net_* tools
+# are in the catalogue: with the sidecar off they must not be named, or a network
+# question becomes an answerless chat instead of an ordinary web search.
+_NETWORK_RULES = {
+    "ru": (
+        "ВАЖНО: Состояние сети → НЕ 6. Владелец домена (WHOIS), что резолвится, отвечает ли узел, "
+        "маршрут, открытые порты, заголовки и сертификат URL, скорость до iperf3 — это обычный чат: "
+        "ответят инструменты net_*. Поисковик по такому запросу отдаёт статьи о том, как проверять, "
+        "и ни одного владельца."
+    ),
+    "en": (
+        "IMPORTANT: The state of a network → NOT 6. The owner of a domain (WHOIS), what a name resolves "
+        "to, whether a host answers, the route, open ports, a URL's headers and certificate, throughput "
+        "to iperf3 — that is ordinary chat: the net_* tools answer it. A search engine returns articles "
+        "about how to check and no owner at all."
+    ),
+}
+
+_KERNEL_NETWORK_RULES = {
+    "ru": (
+        "- Вопрос о сети — и просьба её ИЗМЕРИТЬ или ПРОВЕРИТЬ — это none: используй подходящий инструмент "
+        "net_* (см. # TOOLS).\n"
+        "  «Измерь скорость до …», «запусти iperf3 …», «проверь пинг …», «отвечает ли узел …», "
+        "«какие порты открыты …», «кто владелец домена …» — это none плюс инструмент "
+        "(net_speed, net_ping, net_whois, net_ports, net_dns).\n"
+        "  Поисковик ничего не измеряет: он отдаёт статьи о том, как проверять, поэтому search здесь "
+        "всегда ошибка."
+    ),
+    "en": (
+        "- A question about a network — and a request to MEASURE or CHECK one — is none: use the net_* tool "
+        "that answers it (see # TOOLS).\n"
+        "  'Measure the speed to ...', 'run iperf3 ...', 'check the ping ...', 'is the host up ...', "
+        "'which ports are open ...', 'who owns <domain>' are none plus the matching tool "
+        "(net_speed, net_ping, net_whois, net_ports, net_dns).\n"
+        "  A search engine measures nothing: it returns articles about how to check, so search is always "
+        "wrong here."
+    ),
+}
+
+
+def network_rule(lang: str = "ru", for_kernel: bool = False) -> str:
+    """The rule for this language, or an empty string when the tools do not exist."""
+    try:
+        from app import netdiag
+
+        if not netdiag.available():
+            return ""
+    except Exception:  # noqa: BLE001 - no sidecar, no rule
+        return ""
+    rules = _KERNEL_NETWORK_RULES if for_kernel else _NETWORK_RULES
+    return rules.get(lang, rules["en"])
+
+
 def _kernel_skills() -> set[str]:
     """The names the kernel may return, or an empty set when none is installed."""
     try:
-        from app.skills import discover
+        from app.skills import active_skills
 
-        return {skill.name for skill in discover()}
+        return {skill.name for skill in active_skills()}
     except Exception:  # noqa: BLE001 - a broken skills folder must not fail routing
         return set()
 
@@ -886,6 +939,7 @@ class BaseModule(TranslationMixin):
                 "response_style": style_instruction,
                 "camera_section": camera_section,
                 "router_context": recent_context or "",
+                "network_rule": network_rule(lang),
             },
             lang=lang,
         )
@@ -985,6 +1039,7 @@ class BaseModule(TranslationMixin):
             recent_context,
             _kernel_rooms(cam),
             skills=_kernel_skill_catalog(skill_names),
+            network_rule=network_rule(lang, for_kernel=True),
         )
         if not prompt:
             self.logger.error("Request kernel: prompt template is missing")
@@ -1039,6 +1094,9 @@ class BaseModule(TranslationMixin):
             "[-CAMERA-]": "camera",
             "[-REASONING-WEB-]": "reasoning_web",
             "[-CRAWL-]": "crawl",
+            "[-NET-]": "net",
+            "[-SCHEDULE-]": "schedule",
+            "[-WRITE-]": "write",
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
             "[-SEARCH-]": "search",
@@ -1050,6 +1108,18 @@ class BaseModule(TranslationMixin):
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
+                if action in ("net", "schedule", "write"):
+                    # Both are ordinary chat with tools. The whole request has to survive:
+                    # the chat model chooses the tool from the user's words, and "prits.ru"
+                    # alone says nothing about measuring anything, nor "at nine" about what
+                    # to remind.
+                    return {
+                        "action": "none",
+                        "query": original_query,
+                        "needs_reasoning": False,
+                        "tools": None,
+                        "memory": None,
+                    }
                 if action in ("image", "video"):
                     # Image/video: text after marker is unreliable (copied from history).
                     # Use the original user query instead.

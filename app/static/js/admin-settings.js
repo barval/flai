@@ -56,6 +56,21 @@
             input = document.createElement('input');
             input.type = 'checkbox';
             input.checked = field.value === true;
+        } else if (Array.isArray(field.choices) && field.choices.length) {
+            // A closed set of values: a selector, so nobody has to know the words.
+            input = document.createElement('select');
+            const choices = field.choices.map(String);
+            const current = field.value === null || field.value === undefined ? '' : String(field.value);
+            // A value saved before the list existed stays valid and visible, instead of
+            // being replaced by the first option on the next unrelated save.
+            if (current && !choices.includes(current)) choices.push(current);
+            choices.forEach((choice) => {
+                const option = document.createElement('option');
+                option.value = choice;
+                option.textContent = choice;
+                input.appendChild(option);
+            });
+            input.value = current || choices[0];
         } else {
             input = document.createElement('input');
             input.type = field.secret ? 'password' : (field.kind === 'int' || field.kind === 'float' ? 'number' : 'text');

@@ -10,6 +10,14 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **An adaptive lead for frequent actions** — the lead is a constant: ten minutes, capped at
+  half the interval for a repeating action (v13.5). That is a rule of thumb, not a measurement.
+  The next step is to lead by what the item's own runs actually cost — the median duration of its
+  last N completed tasks plus a margin — so a check that takes 40 seconds is not queued five
+  minutes early and one that takes four minutes is not queued too late. Needs: a per-item
+  duration history (the `tasks` rows already carry `started_at`/`completed_at`), a small
+  aggregate in the tick, and a measurement on the reference card before choosing the margin.
+
 - **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
   engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
   in containers, the low-VRAM throughput they claim (8 GB cards), multimodal and embedding support,

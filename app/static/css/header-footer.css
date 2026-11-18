@@ -37,6 +37,14 @@ header {
     z-index: 1000;
     width: 520px;
     max-width: calc(100vw - 32px);
+    /* The panel sits at top: 52px inside an absolutely positioned header, so it adds
+       nothing to the document height: without a ceiling the lower half of a long list
+       (many scheduled items, many API keys) is simply unreachable. It scrolls itself,
+       and the dynamic viewport unit keeps that true under a mobile browser's chrome. */
+    max-height: calc(100vh - 70px);
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     color: #2c3e50;
     background: #fff;
@@ -48,6 +56,55 @@ header {
     text-align: left;
 }
 .api-keys-panel[hidden] { display: none; }
+.scheduler-section {
+    border-bottom: 1px solid #dbe6f0;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.scheduler-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.scheduler-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+.scheduler-item:hover { background-color: #f2f7fc; }
+.scheduler-item-icon { font-size: 1rem; line-height: 1.2; }
+.scheduler-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.scheduler-item-title {
+    font-size: 0.88rem;
+    color: #2c3e50;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scheduler-item-when {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+}
+.scheduler-item-delete {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #c0392b;
+    font-size: 0.78rem;
+    border-radius: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.scheduler-item-delete:hover { background-color: #fdf0ee; }
+
 .api-keys-header {
     display: flex;
     align-items: center;
@@ -104,6 +161,8 @@ header {
 }
 .api-keys-header span { color: #2c3e50; }
 @media (max-width: 600px) {
+    /* Narrow screens keep the horizontal scroll the keys table needs; the panel's own
+       vertical scroll comes from the base rule above, so the list never leaves the screen. */
     .api-keys-panel { left: 16px; overflow-x: auto; }
     .api-keys-table { min-width: 480px; }
 }

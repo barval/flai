@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -203,7 +204,7 @@ def check_translations(root: Path, version: str) -> list[Finding]:
     return findings
 
 
-def check_readmes(root: Path, version: str) -> list[Finding]:
+def check_readmes(root: Path, version: str, released: bool = False) -> list[Finding]:
     findings: list[Finding] = []
     slug = "#-whats-new-in-v" + version.replace(".", "")
     russian_slug = "#-что-нового-в-v" + version.replace(".", "")
@@ -231,15 +232,23 @@ def check_readmes(root: Path, version: str) -> list[Finding]:
         start = next((i for i, line in enumerate(content) if line.strip() == heading), None)
         if start is None:
             continue
+        bullets = 0
         for number in range(start + 1, len(content)):
             stripped = content[number].strip()
-            if stripped.startswith(stop) or stripped.startswith("Full history:"):
+            # `Full history:` sits directly under the heading, before the bullets.
+            if stripped.startswith(stop):
                 break
+            if stripped.startswith("Full history:"):
+                continue
             if stripped.startswith("- "):
-                findings.append(
-                    Finding("fail", name, number + 1, "What's New must be empty when the release line opens")
-                )
-                break
+                bullets += 1
+                if not released:
+                    findings.append(
+                        Finding("fail", name, number + 1, "What's New must be empty when the release line opens")
+                    )
+                    break
+        if released and bullets == 0:
+            findings.append(Finding("fail", name, 0, "What's New is empty in a released tree"))
     return findings
 
 
@@ -300,21 +309,110 @@ def check_contributing(root: Path, version: str, previous: str) -> list[Finding]
     return findings
 
 
-def check_changelog(root: Path, version: str, previous: str) -> list[Finding]:
+SECTION = re.compile(r"^## \[v(\d+\.\d+)\] — (.+?)\s*$")
+
+
+def _sections(content: list[str]) -> list[tuple[int, str, str]]:
+    """(line number, version, heading tail) for every release section, in file order."""
+    found: list[tuple[int, str, str]] = []
+    for number, line in enumerate(content, start=1):
+        match = SECTION.match(line)
+        if match:
+            found.append((number, match.group(1), match.group(2).strip()))
+    return found
+
+
+def _empty_subsections(content: list[str], start: int) -> list[int]:
+    """Lines of `### ` headings under this section that carry no entry.
+
+    Opening writes the heading and nothing else; a subsection appears when it has
+    content. An empty one is a promise the release never kept.
+    """
+    empty: list[int] = []
+    current_heading: int | None = None
+    has_entry = False
+    for index in range(start, len(content)):
+        line = content[index]
+        if line.startswith("## ") and index > start:
+            break
+        if line.startswith("### "):
+            if current_heading is not None and not has_entry:
+                empty.append(current_heading)
+            current_heading = index + 1
+            has_entry = False
+            continue
+        if current_heading is not None and line.strip() and not line.startswith("####"):
+            has_entry = True
+    if current_heading is not None and not has_entry:
+        empty.append(current_heading)
+    return empty
+
+
+def check_changelog(
+    root: Path,
+    version: str,
+    previous: str,
+    released: bool = False,
+    source_date: str = "",
+) -> list[Finding]:
     path = root / "CHANGELOG.md"
     if not path.exists():
         return [Finding("fail", "CHANGELOG.md", 0, "changelog is missing")]
     findings: list[Finding] = []
-    current = re.compile(rf"^## \[v{re.escape(version)}\] — Unreleased\s*$")
-    stale = re.compile(rf"^## \[v{re.escape(previous)}\] — Unreleased\s*$")
-    has_current = False
-    for number, line in enumerate(lines(path), start=1):
-        if current.match(line):
-            has_current = True
-        if stale.match(line):
+    content = lines(path)
+    sections = _sections(content)
+    wanted = "a date" if released else "Unreleased"
+
+    current = [(number, tail) for number, name, tail in sections if name == version]
+    if not current:
+        findings.append(Finding("fail", "CHANGELOG.md", 0, f"missing section: ## [v{version}] — {wanted}"))
+    else:
+        number, tail = current[0]
+        if released and tail.lower() == "unreleased":
+            findings.append(Finding("fail", "CHANGELOG.md", number, f"v{version} must carry the release date"))
+        if not released and tail.lower() != "unreleased":
+            findings.append(Finding("fail", "CHANGELOG.md", number, f"v{version} must read `— Unreleased` while it is open"))
+        if released:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", tail):
+                findings.append(Finding("fail", "CHANGELOG.md", number, f"v{version} needs an ISO date, found {tail!r}"))
+            elif source_date and tail < source_date:
+                findings.append(
+                    Finding(
+                        "fail",
+                        "CHANGELOG.md",
+                        number,
+                        f"v{version} is dated {tail}, before the {previous} head ({source_date})",
+                    )
+                )
+        for line_number in _empty_subsections(content, number):
+            findings.append(Finding("fail", "CHANGELOG.md", line_number, "subsection has no entries"))
+
+    names = [name for _number, name, _tail in sections]
+    if version in names and previous in names and names.index(version) > names.index(previous):
+        findings.append(
+            Finding("fail", "CHANGELOG.md", 0, f"v{version} must appear above v{previous}")
+        )
+    # Anything above the checked release is a line opened after it: it may exist, but
+    # it is not shipped yet, so it must still be Unreleased.
+    for number, name, tail in sections:
+        if name == version:
+            break
+        if tail.lower() != "unreleased":
+            findings.append(
+                Finding("fail", "CHANGELOG.md", number, f"v{name} sits above v{version} and is already dated")
+            )
+
+    previous_sections = [(number, tail) for number, name, tail in sections if name == previous]
+    if not previous_sections:
+        findings.append(Finding("fail", "CHANGELOG.md", 0, f"previous section v{previous} is missing"))
+    else:
+        number, tail = previous_sections[0]
+        if tail.lower() == "unreleased":
             findings.append(Finding("fail", "CHANGELOG.md", number, f"v{previous} must be dated, not Unreleased"))
-    if not has_current:
-        findings.append(Finding("fail", "CHANGELOG.md", 0, f"missing section: ## [v{version}] — Unreleased"))
+        elif source_date and tail != source_date:
+            findings.append(
+                Finding("fail", "CHANGELOG.md", number, f"v{previous} is dated {tail}; the SOURCE head is {source_date}")
+            )
     return findings
 
 
@@ -368,6 +466,21 @@ def main() -> int:
     parser.add_argument("--previous", required=True, help="source release line, for example 12.6")
     parser.add_argument("--root", type=Path, default=Path("."), help="repository root (default: .)")
     parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    parser.add_argument(
+        "--released",
+        action="store_true",
+        help="the line is being signed off: the section carries a date and What's New is filled",
+    )
+    parser.add_argument(
+        "--source-date",
+        default="",
+        help="date of the SOURCE head (YYYY-MM-DD); both CHANGELOG sections are compared with it",
+    )
+    parser.add_argument(
+        "--no-branch-check",
+        action="store_true",
+        help="skip the warning about SOURCE not being merged into master",
+    )
     args = parser.parse_args()
 
     version = args.version.strip().lstrip("v")
@@ -382,6 +495,23 @@ def main() -> int:
         print(f"error: {args.root} does not look like the FLAI repository root", file=sys.stderr)
         return 2
 
+    warnings: list[Finding] = []
+    if not args.no_branch_check and (args.root / ".git").exists():
+        merged = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", f"v{previous}", "master"],
+            cwd=args.root,
+            capture_output=True,
+        )
+        if merged.returncode == 1:
+            warnings.append(
+                Finding(
+                    "warn",
+                    f"v{previous}",
+                    0,
+                    "not merged into master: open the new line only after the previous one ships, or say why",
+                )
+            )
+
     failures: list[Finding] = []
     failures += check_constant(args.root, "app/config.py", r'^APP_VERSION = "(\d+\.\d+)"', version, "APP_VERSION")
     failures += check_constant(args.root, "pyproject.toml", r'^version = "(\d+\.\d+\.\d+)"', f"{version}.0", "project version")
@@ -391,23 +521,34 @@ def main() -> int:
     failures += check_doc_titles(args.root, version)
     failures += check_deploy_scripts(args.root, version, previous)
     failures += check_translations(args.root, version)
-    failures += check_readmes(args.root, version)
+    failures += check_readmes(args.root, version, args.released)
     failures += check_demo_pages(args.root, version)
     failures += check_contributing(args.root, version, previous)
-    failures += check_changelog(args.root, version, previous)
+    failures += check_changelog(args.root, version, previous, args.released, args.source_date)
     failures += check_agents_branch_pair(args.root, version, previous)
     reviews = review_scan(args.root, version, previous)
     covered = {(finding.path, finding.line) for finding in failures}
     reviews = [finding for finding in reviews if (finding.path, finding.line) not in covered]
 
     if args.json:
-        print(json.dumps({"failures": [asdict(f) for f in failures], "review": [asdict(f) for f in reviews]}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "failures": [asdict(f) for f in failures],
+                    "warnings": [asdict(f) for f in warnings],
+                    "review": [asdict(f) for f in reviews],
+                },
+                indent=2,
+            )
+        )
     else:
         for finding in failures:
             print(f"FAIL  {finding.path}:{finding.line}  {finding.message}")
+        for finding in warnings:
+            print(f"WARN  {finding.path}:{finding.line}  {finding.message}")
         for finding in reviews:
             print(f"REVIEW  {finding.path}:{finding.line}  {finding.message}")
-        print(f"\n{len(failures)} failure(s), {len(reviews)} occurrence(s) to review.")
+        print(f"\n{len(failures)} failure(s), {len(warnings)} warning(s), {len(reviews)} occurrence(s) to review.")
     return 1 if failures else 0
 
 

@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import operator
+import time
 from typing import Any
 
 import pendulum
@@ -365,6 +366,284 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+
+SCHEDULER_TOOLS = ("schedule_reminder", "schedule_action")
+
+_WHEN_SCHEMA = {
+    "type": "string",
+    "description": (
+        "The moment as the user's local wall clock. A full moment 'YYYY-MM-DD HH:MM' when "
+        "the user named a date; just 'HH:MM' when only a time was named, which is the usual "
+        "case — the server fills the date and cannot get it wrong. Never invent a date: a "
+        "guessed one lands in the past or in the wrong month."
+    ),
+}
+
+_IN_MINUTES_SCHEMA = {
+    "type": "integer",
+    "description": (
+        "For a relative request ('in two minutes', 'in half an hour'): how many minutes "
+        "from now. Use this INSTEAD of when — it needs no date arithmetic, and a date you "
+        "calculate yourself is the mistake this field exists to prevent."
+    ),
+}
+
+_REPEAT_SCHEMA = {
+    "type": "string",
+    "enum": ["once", "minutes", "daily", "weekly", "monthly"],
+    "description": "Default once. daily/weekly/monthly repeat at the same local time.",
+}
+
+_SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_reminder",
+            "description": (
+                "Schedule a reminder: a sentence the assistant sends at that moment without "
+                "thinking about it. Use it when the user asks to be reminded of something. "
+                "The text is written now, so it may contain {when} for the time it fires."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "in_minutes": _IN_MINUTES_SCHEMA,
+                    "text": {"type": "string", "description": "What to send at that moment"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_action",
+            "description": (
+                "Schedule real work at a moment: the task plans and runs by itself, with the "
+                "user's tools and skills, and its result arrives in the actions chat. Use it "
+                "when the user asks to have something DONE later ('every morning at eight send "
+                "me the news'), not just to be reminded of it. The goal is the user's request "
+                "and nothing else: do not add steps they did not ask for (a file, a copy, an "
+                "extra check)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "in_minutes": _IN_MINUTES_SCHEMA,
+                    "goal": {"type": "string", "description": "What has to be done, in full"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["goal"],
+            },
+        },
+    },
+]
+
+
+START_TASK_TOOL = "start_task"
+
+_START_TASK_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": START_TASK_TOOL,
+        "description": (
+            "Start a real background task for work that needs planning: several steps, several "
+            "sources, files to write. Use it when the goal says to start or launch a task. The "
+            "task appears in the user's own task list and its result stays there; this run only "
+            "reports that it started, in one sentence."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "The work, in full, as the user asked it"},
+                "title": {"type": "string", "description": "A short name for the task list"},
+            },
+            "required": ["goal", "title"],
+        },
+    },
+}
+
+def scheduler_run_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
+    """The tools one scheduler run may use."""
+    definitions = [
+        item for item in get_tool_definitions(lang)
+        if item.get("function", {}).get("name") not in SCHEDULER_RUN_EXCLUDED_TOOLS
+    ]
+    return definitions + [dict(_START_TASK_DEFINITION)]
+
+
+WRITE_DOCUMENT_TOOL = "write_document"
+
+_WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": WRITE_DOCUMENT_TOOL,
+        "description": (
+            "Save a document for the user: a report, a summary, a letter, a table. The file "
+            "appears in the user's own document library and is indexed like any other document. "
+            "Use it whenever the answer is meant to be a FILE the user keeps. Give a display "
+            "name without a path; the extension follows the format. For a table use format csv "
+            "with rows (a list of rows, each a list of cells), never a hand-built string."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Display name, e.g. 'October report'"},
+                "content": {"type": "string", "description": "The whole text of the document"},
+                "format": {
+                    "type": "string",
+                    "enum": ["md", "csv", "json", "txt"],
+                    "description": "md for prose, csv with rows, json (must parse), txt plain",
+                },
+                "rows": {
+                    "type": "array",
+                    "description": "For csv only: the rows, each a list of cell values",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                },
+                "append": {
+                    "type": "boolean",
+                    "description": (
+                        "Add to a document this assistant already wrote instead of making "
+                        "another one. Use it for a log that grows."
+                    ),
+                },
+            },
+            "required": ["name"],
+        },
+    },
+}
+
+# ── Network diagnostics (v13.5) ───────────────────────────────────────────────
+# Advertised only when the netdiag sidecar answers, and gated per user at execution
+# time: a hidden tool cannot tell the person why it refused.
+
+NET_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "net_dns",
+            "description": "Resolve a name through DNS. Use for 'why does this domain not open', mail records, or what a name points to. Copy the name exactly as the user wrote it; the words around it are not part of it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Domain or host name, e.g. 'example.com'"},
+                    "type": {"type": "string", "description": "Record type: A, AAAA, MX, TXT, NS, SOA, CNAME, PTR"},
+                    "server": {"type": "string", "description": "Resolver to ask, e.g. '8.8.8.8'"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_whois",
+            "description": "Look up the registration of a domain or the allocation of an address. Copy the name exactly as the user wrote it; the words around it are not part of it.",
+            "parameters": {
+                "type": "object",
+                "properties": {"target": {"type": "string", "description": "Domain or IP address"}},
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_ping",
+            "description": "Check whether a host answers, and how long it takes. One host per call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "count": {"type": "integer", "description": "Packets to send, 1-5 (default 3)"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_trace",
+            "description": "Trace the route to a host and report latency and loss per hop.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "hops": {"type": "integer", "description": "Maximum hops, 1-15"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_ports",
+            "description": "Scan the 100 most common TCP ports of one host, or discover which addresses answer in a network (at most /24).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "One host, or a network such as '192.168.1.0/24' for a discovery sweep"},
+                    "services": {"type": "boolean", "description": "Also identify the service on open ports (slower)"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_http",
+            "description": "Fetch the HTTP response headers and the TLS certificate of a URL, to see why a page fails or what a server answers.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "http or https URL"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_speed",
+            "description": "Measure throughput to a host running an iperf3 server.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "port": {"type": "integer", "description": "Server port (default 5201)"},
+                    "seconds": {"type": "integer", "description": "Test duration, 1-10 seconds"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+]
+
+
+def net_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
+    """The diagnostics tools, offered only while the sidecar answers."""
+    from app import netdiag
+
+    if not netdiag.available():
+        return []
+    return [d for d in NET_TOOL_DEFINITIONS]
+
+
 def _camera_available() -> bool:
     """Is the camera module registered and reachable? Unknown counts as no."""
     try:
@@ -393,7 +672,26 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         # A tool that can only answer "the service is unavailable" is noise in
         # the catalogue; the camera module is optional.
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
-    return definitions + skill_tool_definitions() + mcp_tool_definitions()
+    return (
+        list(definitions)
+        + [_WRITE_DOCUMENT_DEFINITION]
+        + _scheduler_definitions()
+        + skill_tool_definitions()
+        + mcp_tool_definitions()
+        + net_tool_definitions()
+    )
+
+
+def _scheduler_definitions() -> list[dict[str, Any]]:
+    """The scheduling tools, offered unless the installation switched the scheduler off."""
+    try:
+        from flask import current_app
+
+        if not current_app.config.get("SCHEDULER_ENABLED", True):
+            return []
+    except Exception:  # noqa: BLE001 - no app context: offer them, the tool checks again
+        pass
+    return list(_SCHEDULER_DEFINITIONS)
 
 
 # A restricted profile's catalogue, named here rather than in the module that
@@ -955,6 +1253,284 @@ def _exec_time_calc(
 
 # ── Tool dispatch ────────────────────────────────────────────────────
 
+def _ground_target(value: str, message: str) -> str:
+    """The host the user actually typed, when the model's copy is off by a character.
+
+    A small model merges the word next to a name into the name — measured on the
+    live installation, a question about the name servers of ``prits.ru`` reached
+    ``net_dns`` as ``pritns.ru`` while the kernel's own query was correct, so the
+    mistake is the tool argument and not the routing. The message is the source of
+    truth: a candidate replaces the argument only when the argument does not appear
+    in the message verbatim and a host-like token there is a near match. Nothing is
+    rewritten when the user typed what the model sent.
+    """
+    text = str(value or "").strip()
+    if not text or not message:
+        return text
+    lowered = str(message).lower()
+    if text.lower() in lowered:
+        return text
+    _original = text
+
+    import difflib
+    import re
+
+    candidates = re.findall(r"[0-9a-z](?:[0-9a-z.-]*[0-9a-z])?", lowered)
+    best: tuple[float, str] | None = None
+    for candidate in candidates:
+        if "." not in candidate or abs(len(candidate) - len(text)) > 2:
+            continue
+        ratio = difflib.SequenceMatcher(None, candidate, text.lower()).ratio()
+        if ratio >= 0.85 and (best is None or ratio > best[0]):
+            best = (ratio, candidate)
+    if best is None:
+        return text
+    logger.info(f"network target repaired from the user's message: {_original} -> {best[1]}")
+    return best[1]
+
+
+def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[str, Any], target: str) -> str:
+    """Permission, blocked address, rate limit, one call, one audit line.
+
+    The audit is written in a ``finally``: a call that failed still happened, and
+    "who scanned what" must survive the failure that made it interesting.
+    """
+    from app import netdiag
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    with force_locale(lang):
+        if not login:
+            return "⚠️ " + str(_("User not identified for network tools"))
+        if not netdiag.user_allowed(login):
+            return "⚠️ " + str(_("Network tools are not available to you."))
+        if not netdiag.available():
+            return "⚠️ " + str(_("The network diagnostics service is not running"))
+
+    if netdiag.blocked_target(target):
+        # The guard's phrase is English; the user reads their own language.
+        with force_locale(lang):
+            return "⚠️ " + str(_("This address is refused: {reason}").format(reason=_("loopback or link-local")))
+
+    if not netdiag.check_rate_limit(login):
+        with force_locale(lang):
+            return "⚠️ " + str(_("Too many network calls; try again in a minute."))
+
+    started = time.monotonic()
+    ok = False
+    try:
+        answer = netdiag.call(endpoint, payload)
+        text = netdiag.output_of(answer)
+        if not text:
+            with force_locale(lang):
+                text = "⚠️ " + str(_("The diagnostics service returned nothing"))
+        ok = not text.startswith("⚠️ ")
+        return text
+    except Exception:  # noqa: BLE001 - a failed call is a sentence, not a crash
+        logger.exception(f"network tool {tool} failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+    finally:
+        netdiag.record_call(login, tool, target, ok, time.monotonic() - started)
+
+
+def _exec_net_dns(ctx: dict[str, Any], **kw: Any) -> str:
+    name = _ground_target(str(kw.get("name", "")).strip(), str(ctx.get("message_text") or ""))
+    payload = {"name": name}
+    if kw.get("type"):
+        payload["type"] = str(kw["type"])
+    if kw.get("server"):
+        payload["server"] = str(kw["server"])
+    return _run_net_tool("net_dns", "dns", ctx, payload, name)
+
+
+def _exec_net_whois(ctx: dict[str, Any], **kw: Any) -> str:
+    target = _ground_target(str(kw.get("target", "")).strip(), str(ctx.get("message_text") or ""))
+    return _run_net_tool("net_whois", "whois", ctx, {"target": target}, target)
+
+
+def _exec_net_ping(ctx: dict[str, Any], **kw: Any) -> str:
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
+    payload = {"host": host}
+    if kw.get("count") is not None:
+        payload["count"] = kw["count"]
+    return _run_net_tool("net_ping", "ping", ctx, payload, host)
+
+
+def _exec_net_trace(ctx: dict[str, Any], **kw: Any) -> str:
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
+    payload = {"host": host}
+    if kw.get("hops") is not None:
+        payload["hops"] = kw["hops"]
+    return _run_net_tool("net_trace", "trace", ctx, payload, host)
+
+
+def _exec_net_ports(ctx: dict[str, Any], **kw: Any) -> str:
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
+    payload = {"host": host}
+    if kw.get("services"):
+        payload["service_version"] = True
+    return _run_net_tool("net_ports", "ports", ctx, payload, host)
+
+
+def _exec_net_http(ctx: dict[str, Any], **kw: Any) -> str:
+    url = str(kw.get("url", "")).strip()
+    return _run_net_tool("net_http", "http", ctx, {"url": url}, url)
+
+
+def _exec_net_speed(ctx: dict[str, Any], **kw: Any) -> str:
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
+    payload = {"host": host}
+    for key in ("port", "seconds"):
+        if kw.get(key) is not None:
+            payload[key] = kw[key]
+    return _run_net_tool("net_speed", "speed", ctx, payload, host)
+
+
+def _schedule_refusal(language: str, refusal) -> str:
+    """A refusal is a question back, never a guess at the time."""
+    from flask_babel import force_locale
+
+    with force_locale(language):
+        if refusal.code == "time_unclear":
+            return "⚠️ " + str(_("I could not tell the time. When should it happen?"))
+        if refusal.code == "interval_too_small":
+            # Literal gettext calls: a message chosen through a variable is invisible to the
+            # extractor and would ship in the source language.
+            if refusal.params.get("kind") == "action":
+                return "⚠️ " + str(
+                    _("An action cannot run more often than every {minutes} minutes on this installation")
+                ).format(minutes=refusal.params.get("floor"))
+            return "⚠️ " + str(_("A reminder cannot repeat more often than every {minutes} minutes")).format(
+                minutes=refusal.params.get("floor")
+            )
+        if refusal.code == "repeat_unclear":
+            return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
+        if refusal.code == "in_the_past":
+            return "⚠️ " + str(_("That time has already passed: {when}. When should it happen?")).format(
+                when=refusal.params.get("when").strftime("%Y-%m-%d %H:%M")
+            )
+        if refusal.code == "empty_body":
+            return "⚠️ " + str(_("There is nothing to send or do. What should happen?"))
+        if refusal.code == "too_long":
+            return "⚠️ " + str(_("That is too long to schedule (max {limit} characters)")).format(
+                limit=refusal.params.get("limit")
+            )
+        return "⚠️ " + str(_("The schedule could not be created"))
+
+
+def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
+    """Launch an ordinary task: it is the person's, and its result stays in their list."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    from app import userdb
+    from app.scheduler import _SERVICE_TO_TASK_CLASS
+    from app.tasks import store as task_store
+
+    language = str(ctx.get("lang") or "ru")
+    login = str(ctx.get("user_id") or "")
+    goal = str(kw.get("goal") or "").strip()
+    title = (str(kw.get("title") or "").strip() or goal[:60])[:300]
+
+    if not ctx.get("scheduler_run"):
+        # The tool belongs to a run. Chat is never offered it, and a hallucinated
+        # name from a chat turn must not create a task behind the person's back.
+        with force_locale(language):
+            return "⚠️ " + str(_("Only a scheduled action can start a task"))
+    if not login:
+        with force_locale(language):
+            return "⚠️ " + str(_("User not identified for the scheduler"))
+    if not goal:
+        with force_locale(language):
+            return "⚠️ " + str(_("There is nothing to do: the task needs a goal"))
+    if not current_app.config.get("TASKS_ENABLED", False):
+        with force_locale(language):
+            return "⚠️ " + str(_("Background tasks are disabled on this installation"))
+
+    service_class = 2
+    try:
+        row = userdb.get_user_by_login(login) or {}
+        service_class = int(row.get("service_class", 2))
+    except Exception:  # noqa: BLE001 - an unknown account still gets the lowest class
+        service_class = 2
+
+    with force_locale(language):
+        prefixed = str(_("🛠️ Scheduler: {name}")).format(name=title)
+    task_id = task_store.create_task(
+        login,
+        _SERVICE_TO_TASK_CLASS.get(service_class, 5),
+        prefixed,
+        language,
+        str(ctx.get("response_style") or "neutral"),
+    )
+    # The title is the list label; the planner reads its goal from step_plan.task_request.
+    # Without this the task would plan by "Scheduler: <name>" and lose the actual work.
+    task = task_store.update_task(task_id, step_plan={"task_request": goal})
+    try:
+        from app.tasks.events import publish_task_update
+
+        publish_task_update(current_app, task)
+    except Exception:  # noqa: BLE001 - a live view is advisory, never fatal
+        current_app.logger.debug("could not publish the new task")
+    current_app.logger.info(f"service run started task {task_id} ({prefixed})")
+    with force_locale(language):
+        return str(_("🛠️ {title} — the task is started and its result will appear in Tasks")).format(
+            title=title
+        )
+
+
+def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
+    """Create one scheduled item from the model's structured fields."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    from app import scheduler_tools
+
+    language = str(ctx.get("lang") or "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(language):
+            return "⚠️ " + str(_("User not identified for the scheduler"))
+
+    body = kw.get("goal") if kind == "action" else kw.get("text")
+    zone_name = scheduler_tools.installation_zone_name(current_app)
+    try:
+        _item_id, local = scheduler_tools.create_item(
+            kind,
+            login,
+            kw.get("when"),
+            str(body or ""),
+            title=str(kw.get("title") or ""),
+            repeat=kw.get("repeat"),
+            every_minutes=kw.get("every_minutes"),
+            zone_name=zone_name,
+            in_minutes=kw.get("in_minutes"),
+        )
+    except scheduler_tools.ScheduleRefusalError as refusal:
+        return _schedule_refusal(language, refusal)
+
+    from app.scheduler import render_when
+
+    when = render_when(local, language)
+    with force_locale(language):
+        template = _("Action scheduled for {when}") if kind == "action" else _("Reminder set for {when}")
+        head = str(template).format(when=when)
+        if str(kw.get("repeat") or "once") == "minutes":
+            every = int(kw.get("every_minutes") or 0)
+            if every:
+                head += ", " + str(_("then every {minutes} minutes")).format(minutes=every)
+    return f"🔔 {head}" if kind == "reminder" else f"⚙️ {head}"
+
+
+def _exec_schedule_reminder(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "reminder", **kw)
+
+
+def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "action", **kw)
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
@@ -966,10 +1542,85 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
+    WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    "start_task": lambda ctx, **kw: _exec_start_task(ctx, **kw),
+    "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
+    "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
+    "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
+    "net_whois": lambda ctx, **kw: _exec_net_whois(ctx, **kw),
+    "net_ping": lambda ctx, **kw: _exec_net_ping(ctx, **kw),
+    "net_trace": lambda ctx, **kw: _exec_net_trace(ctx, **kw),
+    "net_ports": lambda ctx, **kw: _exec_net_ports(ctx, **kw),
+    "net_http": lambda ctx, **kw: _exec_net_http(ctx, **kw),
+    "net_speed": lambda ctx, **kw: _exec_net_speed(ctx, **kw),
 }
 
 
 SKILL_LOADER_TOOL = "activate_skill"
+
+# A run gets the chat catalogue minus these: the skill loader has no turn to load into, and a
+# scheduler tool in a run would let a schedule create schedules.
+SCHEDULER_RUN_EXCLUDED_TOOLS = frozenset({SKILL_LOADER_TOOL, "schedule_reminder", "schedule_action"})
+
+
+def _write_document_message(code: str, detail: str, lang: str) -> str:
+    """The sentence a refusal becomes, in the caller's language."""
+    from app import documents_write
+
+    # Built inside force_locale: gettext() runs the app's locale selector, which reads
+    # the request, so calling it outside a request context raises.
+    with force_locale(lang):
+        messages = {
+            "empty": _("There is nothing to write: the content is empty"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json or txt"),
+            "too_large": _("The document is too large (limit {limit} KB)").format(
+                limit=documents_write.MAX_CONTENT_BYTES // 1024
+            ),
+            "quota": _("The document storage quota is exhausted; delete something first"),
+            "append_target": _("Can only append to a document this assistant wrote, not to an upload"),
+            "json": _("The JSON does not parse, so nothing was written"),
+            "name": _("The document name is not usable: {detail}"),
+            "csv_rows": _("A csv needs rows: a list of rows, each a list of cells"),
+        }
+        text = messages.get(code, _("The document could not be written"))
+        if "{detail}" in text:
+            text = text.format(detail=detail)
+    return "⚠️ " + str(text)
+
+
+def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
+    """Write a document and queue its indexing; the answer names the file."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.write_document_file(
+            login,
+            str(kw.get("name", "")),
+            content=str(kw.get("content") or ""),
+            fmt=str(kw.get("format") or "md"),
+            rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+            append=bool(kw.get("append")),
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed write is a sentence, not a crash
+        logger.exception("write_document failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
+                name=written.filename, size=size_kb
+            )
+        )
 
 
 def _exec_activate_skill(name: str, lang: str) -> str:
@@ -1004,10 +1655,11 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    if not any(item["function"]["name"] == SKILL_LOADER_TOOL for item in chosen):
-        # The loader survives narrowing: a turn that picked any other tool would
-        # otherwise lose the only way to load a skill for the rest of the turn.
-        chosen += [item for item in definitions if item["function"]["name"] == SKILL_LOADER_TOOL]
+    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS):
+        # Both survive narrowing: a turn that picked any other tool would otherwise
+        # lose the skill loader, or the only way to hand the user a file.
+        if not any(item["function"]["name"] == keep for item in chosen):
+            chosen += [item for item in definitions if item["function"]["name"] == keep]
     return chosen
 
 
@@ -1206,13 +1858,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
             logger.exception(f"MCP tool '{tool_name}' failed")
             lang = context.get("lang", "ru")
             with force_locale(lang):
-                return str(_("The tool could not complete the request."))
+                return "⚠️ " + str(_("The tool could not complete the request."))
 
     executor = _EXECUTOR_MAP.get(tool_name)
     if not executor:
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Unknown tool: {tool}").format(tool=tool_name))
+            return "⚠️ " + str(_("Unknown tool: {tool}").format(tool=tool_name))
 
     try:
         result = executor(context, **arguments)
@@ -1225,4 +1877,4 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
         logger.exception(f"Tool '{tool_name}' execution failed")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("The tool could not complete the request."))
+            return "⚠️ " + str(_("The tool could not complete the request."))

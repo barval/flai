@@ -521,6 +521,7 @@ def _init_postgresql():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         ALTER TABLE documents ADD COLUMN IF NOT EXISTS blob_sha256 TEXT;
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'upload';
         ALTER TABLE documents ADD COLUMN IF NOT EXISTS stored_bytes BIGINT DEFAULT 0;
     """)
     # Read-only sharing: the owner keeps the document, its file and its index
@@ -1009,6 +1010,27 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # v13.5 scheduler: which system chat a session is (recreated on demand when the
+    # user deletes it), and which item a delivered message belongs to.
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'chat_sessions' AND column_name = 'scheduler_kind') THEN
+                ALTER TABLE chat_sessions ADD COLUMN scheduler_kind TEXT;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'scheduler_item_id') THEN
+                ALTER TABLE messages ADD COLUMN scheduler_item_id UUID;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'scheduler_kind') THEN
+                ALTER TABLE messages ADD COLUMN scheduler_kind TEXT;
+            END IF;
+        END
+        $migrate$
+    """)
+
     # camera_rooms — configurable camera/room definitions (single source of truth)
     c.execute("""
         CREATE TABLE IF NOT EXISTS camera_rooms (
@@ -1064,6 +1086,17 @@ def _init_postgresql():
         )
     """)
     c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
+
+    # v13.5: whether an installed skill is enabled. An absent row means enabled,
+    # so an upgrade switches nothing off; the flag lives here rather than in the
+    # frontmatter so an editor cannot change behaviour behind the panel's back.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS skill_settings (
+            skill_name  TEXT PRIMARY KEY,
+            enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # v12.6: Tasks subsystem — persisted background task plans and their steps.
     c.execute("""
@@ -1124,12 +1157,80 @@ def _init_postgresql():
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")
+    # A step's own parameters (which chat tool and with what arguments, what to write and
+    # whether to append): the plan carries them and the runner reads them back.
+    c.execute("ALTER TABLE task_steps ADD COLUMN IF NOT EXISTS extra JSONB NOT NULL DEFAULT '{}'::jsonb")
+
+    # Scheduled reminders and actions (v13.5). One row per item; next_run_at is absolute
+    # so the tick is one indexed query, and the zone is kept because "daily at 09:00" must
+    # stay 09:00 across a DST change.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_items (
+            id            UUID PRIMARY KEY,
+            user_id       TEXT NOT NULL,
+            kind          TEXT NOT NULL CHECK (kind IN ('reminder', 'action')),
+            title         TEXT NOT NULL DEFAULT '',
+            body          TEXT NOT NULL DEFAULT '',
+            repeat        TEXT NOT NULL DEFAULT 'once',
+            every_minutes INTEGER,
+            weekday       SMALLINT,
+            day_of_month  SMALLINT,
+            time_of_day   TIME,
+            timezone      TEXT NOT NULL DEFAULT 'UTC',
+            next_run_at   TIMESTAMPTZ,
+            last_run_at   TIMESTAMPTZ,
+            enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
+        " WHERE enabled AND next_run_at IS NOT NULL"
+    )
+
+    # v13.5: one row per firing of an action. A run is not a task — it is a short service
+    # loop — so it lives in its own table and the Tasks tab cannot show it by construction.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_runs (
+            id            UUID PRIMARY KEY,
+            item_id       UUID NOT NULL REFERENCES scheduler_items(id) ON DELETE CASCADE,
+            user_id       TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'queued'
+                          CHECK (status IN ('queued','running','completed','failed','cancelled')),
+            due_at        TIMESTAMPTZ NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            started_at    TIMESTAMPTZ,
+            finished_at   TIMESTAMPTZ,
+            result        TEXT,
+            error         TEXT,
+            rounds        INTEGER NOT NULL DEFAULT 0,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            delivered_at  TIMESTAMPTZ
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_open ON scheduler_runs (item_id)"
+        " WHERE status IN ('queued','running')"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_due ON scheduler_runs (due_at)"
+        " WHERE delivered_at IS NULL"
+    )
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
+
+    # An earlier cut of v13.5 shipped an action as a task; it is a run in its own table now, so the
+    # columns that tied a task to a schedule are dropped. The release never left the
+    # branch, so no installation carries rows that depend on them.
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_item_id")
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_deliver_at")
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_delivered_at")
+    c.execute("DROP INDEX IF EXISTS idx_tasks_scheduler")
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

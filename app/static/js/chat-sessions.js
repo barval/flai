@@ -1,6 +1,59 @@
 // app/static/js/chat-sessions.js
 // Session management functions
 
+let sessionsReloadPending = false;
+
+// A scheduler chat is created on the server the first time it delivers something, so the
+// sidebar has no row for it: the reminder arrived, the popup closed, and the chat stayed
+// invisible until a manual refresh. Reload the list once per burst, not once per message.
+function reloadSessionsForIncomingMessage() {
+    if (sessionsReloadPending || typeof loadSessionsFromServer !== 'function') return;
+    sessionsReloadPending = true;
+    Promise.resolve(loadSessionsFromServer()).finally(() => {
+        sessionsReloadPending = false;
+    });
+}
+
+// A scheduler chat is a delivery channel, not a conversation: the model is not asked
+// anything there, so the scope picker, the deep-analysis toggle and the whole composer
+// (input, microphone, attachment, Send) have nothing to act on.
+function applyServiceChatMode(kind) {
+    document.body.classList.toggle('service-chat', Boolean(kind));
+}
+
+function updateChatModeForSession(sessionId) {
+    const info = (typeof sessionsData !== 'undefined' && sessionId) ? sessionsData[sessionId] : null;
+    if (info) {
+        applyServiceChatMode(info.scheduler_kind);
+        return;
+    }
+    // Before the list arrives the server's own value is the only truth: without this
+    // the class would be dropped for a moment and the composer would flash.
+    const initial = (window.initialSessionId && sessionId === window.initialSessionId)
+        ? window.CURRENT_SESSION_KIND : null;
+    applyServiceChatMode(initial);
+}
+
+// A title that already carries its own mark — the scheduler's 🔔/⚙️ — keeps it.
+// Prefixing 📝 there reads as two icons for one thing ("📝 🔔 Планировщик").
+function sessionTitleMark(title) {
+    const text = String(title || '');
+    return /^\p{Extended_Pictographic}/u.test(text) ? '' : '📝 ';
+}
+
+// The leading mark and the rest of the title, apart: the mark is an element of its own so
+// a delivery chat can pulse its own bell instead of showing an envelope.
+function splitTitleMark(title) {
+    const text = String(title || '');
+    const match = text.match(/^(\p{Extended_Pictographic}\uFE0F?)\s*/u);
+    if (match) {
+        // One space after the mark, always: a title saved with two (a migration that kept the
+        // original separator) would render as a gap wider than the ones beside it.
+        return { mark: match[1], rest: text.slice(match[0].length).trimStart() };
+    }
+    return { mark: '📝', rest: text };
+}
+
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -37,6 +90,7 @@ function loadSessionsFromServer() {
                 if (!sessionsData[s.id]) {
                     sessionsData[s.id] = {
                         title: s.title,
+                        scheduler_kind: s.scheduler_kind,
                         updated_at: s.updated_at,
                         message_count: s.message_count,
                         total_prompt_tokens: s.total_prompt_tokens,
@@ -46,6 +100,7 @@ function loadSessionsFromServer() {
                 } else {
                     if (sessionsData[s.id].title !== s.title) {
                         sessionsData[s.id].title = s.title;
+                        sessionsData[s.id].scheduler_kind = s.scheduler_kind;
                         sessionsData[s.id].updated_at = s.updated_at;
                         sessionsData[s.id].message_count = s.message_count;
                         sessionsData[s.id].total_prompt_tokens = s.total_prompt_tokens;
@@ -89,17 +144,7 @@ function loadSessionsFromServer() {
             // Only rebuild sessions list HTML if something VISIBLE changed
             // (title or count — not just updated_at which changes constantly during processing)
             if (titleChanged || countChanged) {
-                const sessionsList = Object.keys(sessionsData).map(id => ({
-                    id: id,
-                    title: sessionsData[id].title,
-                    updated_at: sessionsData[id].updated_at,
-                    message_count: sessionsData[id].message_count,
-                    total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-                    total_completion_tokens: sessionsData[id].total_completion_tokens,
-                    has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    queue_info: sessionQueueInfo[id] || null,
-                    ttsPlaying: currentPlayingSessionId === id
-                }));
+                const sessionsList = sessionsForRender();
                 updateSessionsList(sessionsList);
                 // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
                 window._lastSessionsJson = JSON.stringify(sessionsList);
@@ -109,12 +154,34 @@ function loadSessionsFromServer() {
             // appends new messages incrementally. loadMessages does innerHTML=''
             // which causes full chat redraw and flickering on mobile/slow connections.
 
+            // The active chat's kind is authoritative now, whatever the first paint said.
+            if (typeof updateChatModeForSession === 'function') updateChatModeForSession(currentSessionId);
+
             return sessions;
         })
         .catch(err => {
             console.error('Error loading sessions:', err);
             return [];
         });
+}
+
+// One shape for every renderer. Three places rebuild this list — the polling refresh, the
+// full reload and the queue-status refresh — and the actions chat showed an envelope instead
+// of its own gear because the queue-status copy had been built before scheduler_kind existed
+// and nobody added it there. A field is added here once, or it is lost somewhere.
+function sessionsForRender() {
+    return Object.keys(sessionsData).map(id => ({
+        id: id,
+        title: sessionsData[id].title,
+        scheduler_kind: sessionsData[id].scheduler_kind,
+        updated_at: sessionsData[id].updated_at,
+        message_count: sessionsData[id].message_count,
+        total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+        total_completion_tokens: sessionsData[id].total_completion_tokens,
+        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+        queue_info: sessionQueueInfo[id] || null,
+        ttsPlaying: currentPlayingSessionId === id
+    }));
 }
 
 function updateSessionsListFromData() {
@@ -125,19 +192,7 @@ function updateSessionsListFromData() {
     restorePendingRequests();
     // FIX: Increased timeout to prevent excessive updates
     sessionsUpdateTimeout = setTimeout(() => {
-        const sessions = Object.keys(sessionsData).map(id => ({
-            id: id,
-            title: sessionsData[id].title,
-            updated_at: sessionsData[id].updated_at,
-            message_count: sessionsData[id].message_count,
-            total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-            total_completion_tokens: sessionsData[id].total_completion_tokens,
-            has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-            // Include queue info for this session
-            queue_info: sessionQueueInfo[id] || null,
-            // TTS playing state so the sidebar re-renders when it changes
-            ttsPlaying: currentPlayingSessionId === id
-        }));
+        const sessions = sessionsForRender();
         
         // Only update if queue info or session data changed
         const sessionsJson = JSON.stringify(sessions);
@@ -162,6 +217,7 @@ function updateSessionsList(sessions) {
     let html = '';
     sessions.forEach(s => {
         const isActive = s.id === currentActiveId ? 'active' : '';
+        let unreadMark = false;
         const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
         
         // Build status icons with proper priority
@@ -187,7 +243,13 @@ function updateSessionsList(sessions) {
             // No queue status - show unread indicator if needed (only for non-active sessions)
             // Use s.has_unread from server data OR local newMessageIndicators
             if ((s.has_unread || newMessageIndicators[s.id]) && s.id !== currentActiveId) {
-                statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
+                if (s.scheduler_kind) {
+                    // A delivery chat says "new" with its own mark: an envelope there reads
+                    // as an unanswered letter, and there is nobody to answer.
+                    unreadMark = true;
+                } else {
+                    statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
+                }
             }
         }
         
@@ -203,7 +265,7 @@ function updateSessionsList(sessions) {
         <div class="session-info">
             <div class="session-title">
                 ${ttsIcon}${statusIcons}
-                📝 ${escapeHtml(s.title)}
+                <span class="session-title-mark${unreadMark ? ' unread' : ''}"${unreadMark ? ' title="' + t('new_response') + '"' : ''}>${escapeHtml(splitTitleMark(s.title).mark)}</span> ${escapeHtml(splitTitleMark(s.title).rest)}
             </div>
             <div class="session-date">📅 ${dateStr} [${s.message_count}]${sessionTokenStatsHTML(s.total_prompt_tokens, s.total_completion_tokens)}</div>
         </div>
@@ -287,6 +349,7 @@ function createNewSession() {
             };
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
             currentSessionId = data.id;
+            if (typeof applyServiceChatMode === 'function') applyServiceChatMode(null);
             
             // Clear unread indicator for OLD session (we're leaving it)
             if (oldSessionId) {
@@ -314,7 +377,7 @@ function updateSessionTitle(sessionId, newTitle) {
     const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
     if (!sessionItem) return;
     const titleElement = sessionItem.querySelector('.session-title');
-    if (titleElement) titleElement.innerHTML = '📝 ' + escapeHtml(newTitle);
+    if (titleElement) titleElement.innerHTML = sessionTitleMark(newTitle) + escapeHtml(newTitle);
     const now = new Date();
     const formattedDate = formatFullDateTime(now.toISOString());
     const dateElement = sessionItem.querySelector('.session-date');
@@ -402,6 +465,7 @@ function switchSession(sessionId) {
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
+            if (typeof updateChatModeForSession === 'function') updateChatModeForSession(sessionId);
             // Clear unread indicator for NEW current session
             delete newMessageIndicators[sessionId];
             // Also clear unread indicator for PREVIOUS session

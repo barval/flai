@@ -610,6 +610,14 @@ header {
     z-index: 1000;
     width: 520px;
     max-width: calc(100vw - 32px);
+    /* The panel sits at top: 52px inside an absolutely positioned header, so it adds
+       nothing to the document height: without a ceiling the lower half of a long list
+       (many scheduled items, many API keys) is simply unreachable. It scrolls itself,
+       and the dynamic viewport unit keeps that true under a mobile browser's chrome. */
+    max-height: calc(100vh - 70px);
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     color: #2c3e50;
     background: #fff;
@@ -621,6 +629,55 @@ header {
     text-align: left;
 }
 .api-keys-panel[hidden] { display: none; }
+.scheduler-section {
+    border-bottom: 1px solid #dbe6f0;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.scheduler-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.scheduler-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+.scheduler-item:hover { background-color: #f2f7fc; }
+.scheduler-item-icon { font-size: 1rem; line-height: 1.2; }
+.scheduler-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.scheduler-item-title {
+    font-size: 0.88rem;
+    color: #2c3e50;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scheduler-item-when {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+}
+.scheduler-item-delete {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #c0392b;
+    font-size: 0.78rem;
+    border-radius: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.scheduler-item-delete:hover { background-color: #fdf0ee; }
+
 .api-keys-header {
     display: flex;
     align-items: center;
@@ -677,6 +734,8 @@ header {
 }
 .api-keys-header span { color: #2c3e50; }
 @media (max-width: 600px) {
+    /* Narrow screens keep the horizontal scroll the keys table needs; the panel's own
+       vertical scroll comes from the base rule above, so the list never leaves the screen. */
     .api-keys-panel { left: 16px; overflow-x: auto; }
     .api-keys-table { min-width: 480px; }
 }
@@ -2047,6 +2106,97 @@ footer {
     background-color: #e6f2ff;
 }
 
+/* The card's right-hand column: the action icons, and under them the index switch
+   of a document the assistant wrote. */
+.document-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-index-toggle {
+    white-space: nowrap;
+}
+
+/* Scheduler reminder popup — a notification, not a window: the message is
+   already in its own chat, so closing this loses nothing. */
+.scheduler-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scheduler-popup[hidden] { display: none; }
+.scheduler-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+.scheduler-popup-card {
+    position: relative;
+    width: min(420px, calc(100vw - 40px));
+    padding: 20px 22px 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.scheduler-popup-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.scheduler-popup-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+.scheduler-popup-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.scheduler-popup-title[hidden] { display: none; }
+.scheduler-popup-close {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0 2px;
+}
+.scheduler-popup-close:hover { color: #2c3e50; }
+.scheduler-popup-text {
+    margin: 12px 0 0;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #2c3e50;
+}
+.scheduler-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.scheduler-popup-button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1.1rem;
+    background-color: #3498db;
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.scheduler-popup-button:hover { background-color: #2980b9; }
+
 /* Folder name dialog (create/rename) */
 .folder-name-modal {
     position: fixed;
@@ -2797,6 +2947,32 @@ video {
 
 .extra-attachments .image-container {
     margin: 0;
+}
+
+/* A scheduler chat says "new" with its own mark (the bell), not with an envelope: there is
+   nobody to answer in a delivery channel. Slow enough to read, not to nag. */
+.session-title-mark {
+    display: inline-block;
+}
+.session-title-mark.unread {
+    animation: session-mark-pulse 1.6s ease-in-out infinite;
+}
+@keyframes session-mark-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(1.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .session-title-mark.unread {
+        animation: none;
+        opacity: 0.6;
+    }
+}
+
+/* A scheduler chat receives messages and asks nothing: no scope picker, no deep-analysis
+   toggle, no input, microphone, attachment or Send button. */
+body.service-chat .rlm-controls,
+body.service-chat .message-input {
+    display: none;
 }
 
 .message-input {
@@ -3824,6 +4000,17 @@ video {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
+}
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
 }
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
@@ -5041,6 +5228,41 @@ video {
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER PANEL DARK THEME ===== */
+.dark-theme .scheduler-section { border-bottom-color: #444; }
+.dark-theme .scheduler-item:hover { background-color: #3a3a3a; }
+.dark-theme .scheduler-item-title { color: #ecf0f1; }
+.dark-theme .scheduler-item-when { color: #aaa; }
+.dark-theme .scheduler-item-delete {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e74c3c;
+}
+.dark-theme .scheduler-item-delete:hover { background-color: #4a4a4a; }
+
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;
@@ -5264,7 +5486,7 @@ video {
     <link rel="shortcut icon" href="data:image/x-icon;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////8AAP///////wAA/+AAAAf/AAD/gAAAAf8AAP8AAAAA/wAA/wAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAPAAAAAAjwAA4AAAAAAPAADgAAAAAA8AAPAAAAAADwAA+AAAAAAfAAD8AAAAAD8AAP4AAAAAfwAA/wAAAAD/AAD/wAAAA/8AAP/gAAAD/wAA//AAAAP/AAD/+AAAA/8AAP/8AAAD/wAA//4AAAP/AAD//wAAA/8AAP//gAID/wAA///gBgP/AAD//+AOA/8AAP//+B4D/wAA///8P///AAD///5///8AAP///////wAA////////AAA=">
     <script>
         window.DEBUG_JS = false;
-        window.FLAI_VERSION = "13.4";
+        window.FLAI_VERSION = "13.5";
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     <\/script>
@@ -5325,7 +5547,7 @@ video {
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="About">
-            FLAI v13.4
+            FLAI v13.5
         </button>
     </footer>
 
@@ -5336,7 +5558,7 @@ video {
             <button type="button" class="about-modal-close" data-close-about aria-label="Close">&times;</button>
             <img src="data:image/png;base64,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" alt="" class="about-logo">
             <h2 id="about-modal-title">Fully Local AI (FLAI)</h2>
-            <p class="about-version">v13.4</p>
+            <p class="about-version">v13.5</p>
             <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">(c) 2026 Valery Barsukov</p>
         </div>
@@ -6152,6 +6374,14 @@ header {
     z-index: 1000;
     width: 520px;
     max-width: calc(100vw - 32px);
+    /* The panel sits at top: 52px inside an absolutely positioned header, so it adds
+       nothing to the document height: without a ceiling the lower half of a long list
+       (many scheduled items, many API keys) is simply unreachable. It scrolls itself,
+       and the dynamic viewport unit keeps that true under a mobile browser's chrome. */
+    max-height: calc(100vh - 70px);
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     color: #2c3e50;
     background: #fff;
@@ -6163,6 +6393,55 @@ header {
     text-align: left;
 }
 .api-keys-panel[hidden] { display: none; }
+.scheduler-section {
+    border-bottom: 1px solid #dbe6f0;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.scheduler-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.scheduler-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+.scheduler-item:hover { background-color: #f2f7fc; }
+.scheduler-item-icon { font-size: 1rem; line-height: 1.2; }
+.scheduler-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.scheduler-item-title {
+    font-size: 0.88rem;
+    color: #2c3e50;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scheduler-item-when {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+}
+.scheduler-item-delete {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #c0392b;
+    font-size: 0.78rem;
+    border-radius: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.scheduler-item-delete:hover { background-color: #fdf0ee; }
+
 .api-keys-header {
     display: flex;
     align-items: center;
@@ -6219,6 +6498,8 @@ header {
 }
 .api-keys-header span { color: #2c3e50; }
 @media (max-width: 600px) {
+    /* Narrow screens keep the horizontal scroll the keys table needs; the panel's own
+       vertical scroll comes from the base rule above, so the list never leaves the screen. */
     .api-keys-panel { left: 16px; overflow-x: auto; }
     .api-keys-table { min-width: 480px; }
 }
@@ -7589,6 +7870,97 @@ footer {
     background-color: #e6f2ff;
 }
 
+/* The card's right-hand column: the action icons, and under them the index switch
+   of a document the assistant wrote. */
+.document-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-index-toggle {
+    white-space: nowrap;
+}
+
+/* Scheduler reminder popup — a notification, not a window: the message is
+   already in its own chat, so closing this loses nothing. */
+.scheduler-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scheduler-popup[hidden] { display: none; }
+.scheduler-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+.scheduler-popup-card {
+    position: relative;
+    width: min(420px, calc(100vw - 40px));
+    padding: 20px 22px 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.scheduler-popup-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.scheduler-popup-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+.scheduler-popup-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.scheduler-popup-title[hidden] { display: none; }
+.scheduler-popup-close {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0 2px;
+}
+.scheduler-popup-close:hover { color: #2c3e50; }
+.scheduler-popup-text {
+    margin: 12px 0 0;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #2c3e50;
+}
+.scheduler-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.scheduler-popup-button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1.1rem;
+    background-color: #3498db;
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.scheduler-popup-button:hover { background-color: #2980b9; }
+
 /* Folder name dialog (create/rename) */
 .folder-name-modal {
     position: fixed;
@@ -8339,6 +8711,32 @@ video {
 
 .extra-attachments .image-container {
     margin: 0;
+}
+
+/* A scheduler chat says "new" with its own mark (the bell), not with an envelope: there is
+   nobody to answer in a delivery channel. Slow enough to read, not to nag. */
+.session-title-mark {
+    display: inline-block;
+}
+.session-title-mark.unread {
+    animation: session-mark-pulse 1.6s ease-in-out infinite;
+}
+@keyframes session-mark-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(1.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .session-title-mark.unread {
+        animation: none;
+        opacity: 0.6;
+    }
+}
+
+/* A scheduler chat receives messages and asks nothing: no scope picker, no deep-analysis
+   toggle, no input, microphone, attachment or Send button. */
+body.service-chat .rlm-controls,
+body.service-chat .message-input {
+    display: none;
 }
 
 .message-input {
@@ -9366,6 +9764,17 @@ video {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
+}
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
 }
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
@@ -10583,6 +10992,41 @@ video {
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER PANEL DARK THEME ===== */
+.dark-theme .scheduler-section { border-bottom-color: #444; }
+.dark-theme .scheduler-item:hover { background-color: #3a3a3a; }
+.dark-theme .scheduler-item-title { color: #ecf0f1; }
+.dark-theme .scheduler-item-when { color: #aaa; }
+.dark-theme .scheduler-item-delete {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e74c3c;
+}
+.dark-theme .scheduler-item-delete:hover { background-color: #4a4a4a; }
+
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;
@@ -10806,7 +11250,7 @@ video {
     <link rel="shortcut icon" href="data:image/x-icon;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////8AAP///////wAA/+AAAAf/AAD/gAAAAf8AAP8AAAAA/wAA/wAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAPAAAAAAjwAA4AAAAAAPAADgAAAAAA8AAPAAAAAADwAA+AAAAAAfAAD8AAAAAD8AAP4AAAAAfwAA/wAAAAD/AAD/wAAAA/8AAP/gAAAD/wAA//AAAAP/AAD/+AAAA/8AAP/8AAAD/wAA//4AAAP/AAD//wAAA/8AAP//gAID/wAA///gBgP/AAD//+AOA/8AAP//+B4D/wAA///8P///AAD///5///8AAP///////wAA////////AAA=">
     <script>
         window.DEBUG_JS = false;
-        window.FLAI_VERSION = "13.4";
+        window.FLAI_VERSION = "13.5";
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     <\/script>
@@ -10875,6 +11319,7 @@ video {
         <button class="admin-tab" data-tab="settings">Settings</button>
         <button class="admin-tab" data-tab="hub">Model Hub</button>
         <button class="admin-tab" data-tab="models">Models</button>
+        <button class="admin-tab" data-tab="skills">Skills</button>
         <button class="admin-tab" data-tab="mcp">MCP</button>
 
         <button class="admin-tab" data-tab="cameras">Cameras</button>
@@ -10920,6 +11365,11 @@ video {
 
 
 
+
+
+
+
+
                     <tr>
                         <th data-sort="is_active">Status</th>
                         <th data-sort="login">Login</th>
@@ -10934,10 +11384,11 @@ video {
                         <th data-sort="messages_count">Messages</th>
                         <th data-sort="files_count">Files</th>
                         <th data-sort="documents_count">Documents<br>(shared)</th>
-                        <th data-sort="slm_facts_count">SLM Facts</th>
+                        <th data-sort="slm_facts_count">SLM<br>Facts</th>
                         <th data-sort="web_requests_month">Internet<br>requests</th>
-                        <th>Tavily API</th>
-                        <th data-sort="api_keys_count">FLAI API</th>
+                        <th>Tavily<br>API</th>
+                        <th data-sort="api_keys_count">FLAI<br>API</th>
+                        <th>Network<br>tools</th>
 
                         <th>Actions</th>
                      </tr>
@@ -10963,6 +11414,26 @@ video {
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>Network calls</h3>
+                <span class="monitoring-value">24 h</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>User</th>
+                        <th>Tool</th>
+                        <th>Target</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">No network calls in the last 24 hours</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -11225,6 +11696,58 @@ video {
             <input id="mcp-new-token" type="password" placeholder="Token (optional)" autocomplete="new-password">
             <input id="mcp-new-allow" type="text" placeholder="Allowed tools, comma separated" autocomplete="off">
             <button id="mcp-add-server" class="add-user-button">Add server</button>
+        </div>
+    </div>
+
+    <\!-- Skills tab content -->
+    <div id="skills-tab" class="admin-tab-content">
+        <div class="skills-toolbar">
+            <button id="skills-upload-button" class="btn-primary">Upload .md</button>
+            <input type="file" id="skills-upload" accept=".md,text/markdown" hidden>
+            <button id="skills-new" class="add-user-button">New skill</button>
+            <span id="skills-status" class="settings-status"></span>
+        </div>
+        <div class="skills-table-wrapper">
+            <table id="skills-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Source</th>
+                        <th>Tools</th>
+                        <th>Enabled</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="skills-body"></tbody>
+            </table>
+            <div id="skills-empty" class="no-backups">No skills installed</div>
+        </div>
+
+        <div id="skill-editor" class="skill-editor" hidden>
+            <label class="skill-field">
+                <span>Skill name</span>
+                <input type="text" id="skill-name" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="skill-field">
+                <span>Skill document (SKILL.md)</span>
+                <textarea id="skill-body-en" rows="14" spellcheck="false"></textarea>
+            </label>
+            <label class="skill-field">
+                <span>Russian description (optional)</span>
+                <input type="text" id="skill-description-ru" autocomplete="off">
+                <small class="skill-hint">Leave it empty and the base description is shown instead</small>
+            </label>
+            <label class="skill-field">
+                <span>Russian body (optional)</span>
+                <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+                <small class="skill-hint">Leave it empty and the base description is shown instead</small>
+            </label>
+            <div class="skill-editor-actions">
+                <button id="skill-save" class="btn-primary">Save</button>
+                <button id="skill-cancel" class="btn-secondary">Cancel</button>
+                <span id="skill-editor-status" class="settings-status"></span>
+            </div>
         </div>
     </div>
 
@@ -14050,6 +14573,105 @@ body.dark-theme .settings-reset {
 body.dark-theme .mode-option {
     color: #ecf0f1;
 }
+
+/* ── Skills tab (v13.5) ───────────────────────────────────────────────────── */
+.skills-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+    flex-wrap: wrap;
+}
+
+/* One line, one height: .btn-primary and .add-user-button carry different paddings. */
+.skills-toolbar .btn-primary,
+.skills-toolbar .add-user-button {
+    height: 2.25rem;
+    padding: 0 1rem;
+    font-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.skills-table-wrapper table { width: 100%; border-collapse: collapse; }
+.skills-table-wrapper th,
+.skills-table-wrapper td { padding: 0.45rem 0.5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.skills-table-wrapper th { font-weight: 600; font-size: 0.85rem; opacity: 0.75; }
+
+.skill-badge {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.6rem;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+}
+.skill-badge--bundled { opacity: 0.75; }
+.skill-badge--installed { border-color: #3a8f4f; color: #3a8f4f; }
+
+.skill-note { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
+
+.tool-mark { font-size: 0.78rem; line-height: 1.35; }
+.tool-mark--offered { opacity: 0.85; }
+.tool-mark--unavailable { color: #b07a12; }
+.tool-mark--typo { color: #b3261e; }
+.tool-mark--foreign { opacity: 0.6; }
+
+.skill-editor {
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+    border-radius: 0.5rem;
+}
+.skill-field { display: block; margin-bottom: 0.7rem; }
+.skill-field > span { display: block; font-size: 0.82rem; margin-bottom: 0.25rem; opacity: 0.8; }
+.skill-field input,
+.skill-field textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+.skill-editor-actions { display: flex; align-items: center; gap: 0.6rem; }
+
+@media (max-width: 900px) {
+    .skills-table-wrapper table,
+    .skills-table-wrapper thead,
+    .skills-table-wrapper tbody,
+    .skills-table-wrapper tr,
+    .skills-table-wrapper td { display: block; width: 100%; }
+    .skills-table-wrapper thead { display: none; }
+    .skills-table-wrapper tr { border: 1px solid var(--border-color, #d9d9d9); border-radius: 0.5rem; margin-bottom: 0.7rem; padding: 0.4rem; }
+    .skills-table-wrapper td { border: none; padding: 0.25rem 0.35rem; }
+    .skills-table-wrapper td[data-label]::before {
+        content: attr(data-label) ': ';
+        font-weight: 600;
+        font-size: 0.75rem;
+        opacity: 0.75;
+    }
+}
+
+.skills-table-wrapper .btn-small {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    margin-right: 0.35rem;
+}
+.skill-editor-actions .btn-secondary {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+    background: transparent;
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+
+/* ── Network diagnostics audit (v13.5) ───────────────────────────────────── */
+.monitoring-net { grid-column: 1 / -1; }
+.monitoring-net table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.monitoring-net th,
+.monitoring-net td { padding: 0.3rem 0.45rem; text-align: left; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.monitoring-net th { font-weight: 600; opacity: 0.75; }
+.net-audit-empty { opacity: 0.7; font-style: italic; }
+
+.skill-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
 </style>
 <script>
 window.ROOMS = [];
@@ -14065,6 +14687,8 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'monitoring_no_data': "No data in this range",
     'monitoring_load_error': "Failed to load monitoring data",
     'monitoring_since': "History since {date}",
+    'monitoring_net_empty': "No network calls in the last 24 hours",
+    'net_tools_help': "Network diagnostics tools for this user",
     'delete_user_confirm': "Delete user {login}?",
     'error': "Error",
     'internal_server_error': "Internal server error",
@@ -14088,6 +14712,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'files': "Files",
     'documents': "Documents",
     'camera_access': "Camera access",
+    'Network tools': "Network tools",
     'actions': "Actions",
     'active': "Active",
     'create': "Create",
@@ -14130,8 +14755,14 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_secret_empty': "Not set",
     'settings_secret_set': "A value is stored",
     'Search and crawl': "Search and crawl",
+    'Network diagnostics': "Network diagnostics",
     'Documents and RAG': "Documents and RAG",
     'Tasks': "Tasks",
+    'Scheduler': "Scheduler",
+    'Source': "Source",
+    'Enabled': "Enabled",
+    'Delete': "Delete",
+
     'MCP': "MCP",
     'Models and context': "Models and context",
     'Media generation': "Media generation",
@@ -14143,6 +14774,9 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Debug': "Debug",
     'Description': "Description",
     'Use the per-user Tavily key before the local search engine': "Use the per-user Tavily key before the local search engine",
+    'Offer the network diagnostics tools to users who were granted them': "Offer the network diagnostics tools to users who were granted them",
+    'Network diagnostics service URL': "Network diagnostics service URL",
+    'Bearer token for the network diagnostics service': "Bearer token for the network diagnostics service",
     'Tavily API base URL': "Tavily API base URL",
     'Tavily search request timeout (seconds)': "Tavily search request timeout (seconds)",
     'Timeout for the Tavily quota lookup (seconds)': "Timeout for the Tavily quota lookup (seconds)",
@@ -14212,6 +14846,16 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Characters of media descriptions kept in context': "Characters of media descriptions kept in context",
     "Manual cap on the documents' share of the window (0 = derived from the window and the corpus)": "Manual cap on the documents\u0027 share of the window (0 = derived from thewindow and the corpus)",
     'Manual cap on the conversation share of the window (0 = derived from what the session holds)': "Manual cap on the conversation share of the window (0 = derived fromwhat the session holds)",
+    'Deliver scheduled reminders and actions at all': "Deliver scheduled reminders and actions at all",
+    'Minutes late before a firing counts as missed rather than on time': "Minutes late before a firing counts as missed rather than on time",
+    'How many model rounds one action may spend before it must answer': "How many model rounds one action may spend before it must answer",
+    'Seconds one action may run before it stops; checked before each round': "Seconds one action may run before it stops; checked before each round",
+    'The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)': "The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)",
+    'A reminder missed while the server was down: all of them, only the last one, or none': "A reminder missed while the server was down: all of them, only the last one, or none",
+    'An action missed while the server was down: all of them, only the last one, or none': "An action missed while the server was down: all of them, only the last one, or none",
+    'The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped': "The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped",
+    'Minutes before its target an action is queued, so its answer is ready on time': "Minutes before its target an action is queued, so its answer is ready on time",
+    'Minutes after its target a run that never started is cancelled with a short notice': "Minutes after its target a run that never started is cancelled with a short notice",
     'How much work one task request may spend: min, norm or max (applies after a restart)': "How much work one task request may spend: min, norm or max (appliesafter a restart)",
     'When a step is checked: each, final or off (applies after a restart)': "When a step is checked: each, final or off (applies after a restart)",
     'Offer tools from the configured MCP servers to the chat model (applies immediately)': "Offer tools from the configured MCP servers to the chat model (appliesimmediately)",
@@ -14549,9 +15193,21 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'branding_logo_deleted': "Custom logo deleted \u2014 the built-in logo is shown",
     'branding_logo_too_large': "Logo is too large (max 2 MB)",
     'branding_names_saved': "Site names saved",
-    'branding_both_required': "Both language variants are required",
     'branding_name_too_long': "Site name is too long (max 40 characters per language)",
-    'branding_upload_failed': "Logo upload failed"
+    'branding_upload_failed': "Logo upload failed",
+    'Bundled': "Bundled",
+    'Installed': "Installed",
+    'Shadowed by a bundled skill': "Shadowed by a bundled skill",
+    'Rename': "Rename",
+    'Read-only': "Read-only",
+    'Edit': "Edit",
+    'Not available here': "Not available here",
+    'Unknown tool': "Unknown tool",
+    'Skill saved': "Skill saved",
+    'Skill deleted': "Skill deleted",
+    'Skill enabled': "Skill enabled",
+    'Skill disabled': "Skill disabled",
+    'The same name is already taken': "The same name is already taken"
 });
 
 <\/script>
@@ -14772,6 +15428,11 @@ function handleEvent(event) {
                 onTaskStage(event.data);
             }
             break;
+        case 'scheduler_popup':
+            if (typeof onSchedulerPopup === 'function') {
+                onSchedulerPopup(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }
@@ -14805,6 +15466,13 @@ const TOOL_META = {
     rag_search: ['📚', 'tool_rag_search'],
     camera_snapshot: ['📹', 'tool_camera_snapshot'],
     read_page: ['🕸️', 'tool_read_page'],
+    net_dns: ['📡', 'tool_net_dns'],
+    net_whois: ['📡', 'tool_net_whois'],
+    net_ping: ['📡', 'tool_net_ping'],
+    net_trace: ['📡', 'tool_net_trace'],
+    net_ports: ['📡', 'tool_net_ports'],
+    net_http: ['📡', 'tool_net_http'],
+    net_speed: ['📡', 'tool_net_speed'],
 };
 
 function getToolLabel(toolName) {
@@ -16018,6 +16686,12 @@ function onMessageNew(data) {
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {
         setNewMessageIndicator(data.session_id, true);
+        // A chat the sidebar has never seen (the scheduler's, created on first delivery)
+        // must appear now: the flag above is remembered per id and the reload picks it up.
+        if (typeof sessionsData !== 'undefined' && !sessionsData[data.session_id]
+            && typeof reloadSessionsForIncomingMessage === 'function') {
+            reloadSessionsForIncomingMessage();
+        }
         return;
     }
     if (displayedMessageIds.has(data.message_id)) {
@@ -16090,7 +16764,8 @@ function onMessageNew(data) {
                     msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                     msg.timestamp, responseTime, msg.model_name,
                     msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                    msg.scheduler_kind
                 );
             }
             if (sessionsData[data.session_id]) {
@@ -16128,7 +16803,8 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                        msg.scheduler_kind
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -16236,9 +16912,19 @@ const USER_CARD_LABELS = [
 
 function labelUserCardCells(row) {
     const cells = Array.from(row.children);
-    const labels = cells.length === USER_CARD_LABELS.length + 2
-        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
-        : [...USER_CARD_LABELS, 'Actions'];
+    // The trailing columns depend on what the panel renders, so the row itself says
+    // whether the camera column is there. Counting cells instead let one added
+    // column shift every label after it — the camera cell printed "Actions" and the
+    // network cell printed nothing.
+    const hasCamera = !!row.querySelector('.camera-checkboxes');
+    // The row builds the network cell before the camera one, and the header prints
+    // them in that order; the labels must follow the cells, not the other way round.
+    const labels = hasCamera
+        ? [...USER_CARD_LABELS, 'Network tools', 'Camera access', 'Actions']
+        : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
+    if (cells.length !== labels.length) {
+        console.warn('user card labels do not match the columns:', cells.length, labels.length);
+    }
     cells.forEach((cell, index) => {
         if (labels[index]) cell.dataset.label = t(labels[index]);
     });
@@ -16453,6 +17139,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -16555,6 +17249,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {
@@ -18706,12 +19412,9 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const ru = nameRu.value.trim();
         const en = nameEn.value.trim();
-        if (!ru && !en) {
-            // Deliberate reset — both empty means "use the default brand name".
-        } else if (!ru || !en) {
-            alert(t('branding_both_required'));
-            return;
-        } else if (ru.length > 40 || en.length > 40) {
+        if (ru.length > 40 || en.length > 40) {
+            // Only both-empty is special (the default brand); one empty language is
+            // a normal state, and that language simply renders nothing.
             alert(t('branding_name_too_long'));
             return;
         }
@@ -19064,11 +19767,52 @@ document.addEventListener('DOMContentLoaded', function() {
         loadMonitoring();
     });
 
+
+    // Network diagnostics audit: 24 hours of Redis, filled whenever the tab opens.
+    async function loadNetAudit() {
+        const body = document.getElementById('net-audit-body');
+        if (!body) return;
+        try {
+            const resp = await fetch('/admin/api/net-audit?limit=50', { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const calls = data.calls || [];
+            body.innerHTML = '';
+            if (!calls.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'net-audit-empty';
+                cell.textContent = t('monitoring_net_empty');
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            calls.forEach((call) => {
+                const row = document.createElement('tr');
+                [call.at, call.login, call.tool, call.target, call.ok ? 'ok' : 'failed'].forEach((value) => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value === undefined || value === null ? '-' : String(value);
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        } catch (err) {
+            // The audit is best effort: a Redis hiccup leaves the table as it was.
+        }
+    }
+
     const tabButton = document.querySelector('.admin-tab[data-tab="monitoring"]');
-    if (tabButton) tabButton.addEventListener('click', loadMonitoring);
+    if (tabButton) tabButton.addEventListener('click', () => {
+        loadMonitoring();
+        loadNetAudit();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (isActive()) loadMonitoring();
+        if (isActive()) {
+            loadMonitoring();
+            loadNetAudit();
+        }
     });
 
     setInterval(() => {
@@ -19136,6 +19880,21 @@ document.addEventListener('DOMContentLoaded', function() {
             input = document.createElement('input');
             input.type = 'checkbox';
             input.checked = field.value === true;
+        } else if (Array.isArray(field.choices) && field.choices.length) {
+            // A closed set of values: a selector, so nobody has to know the words.
+            input = document.createElement('select');
+            const choices = field.choices.map(String);
+            const current = field.value === null || field.value === undefined ? '' : String(field.value);
+            // A value saved before the list existed stays valid and visible, instead of
+            // being replaced by the first option on the next unrelated save.
+            if (current && !choices.includes(current)) choices.push(current);
+            choices.forEach((choice) => {
+                const option = document.createElement('option');
+                option.value = choice;
+                option.textContent = choice;
+                input.appendChild(option);
+            });
+            input.value = current || choices[0];
         } else {
             input = document.createElement('input');
             input.type = field.secret ? 'password' : (field.kind === 'int' || field.kind === 'float' ? 'number' : 'text');
@@ -19629,6 +20388,249 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.readyState !== 'loading') load();
 })();
 <\/script>
+<script>// app/static/js/admin-skills.js
+// Skills tab: install, edit, enable and remove the instructions the model can load.
+//
+// Two zones, and the panel says which is which: a bundled skill ships with the
+// project inside git, so it can be switched off but never written — a save there
+// would dirty the working tree. An installed one lives under data/skills and is
+// fully editable. Labels come from window.TRANSLATIONS, which the template fills
+// from the catalogs, so nothing here is an untranslated literal.
+(function () {
+    'use strict';
+
+    const body = document.getElementById('skills-body');
+    if (!body) return;
+
+    const t = (key) => (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
+    const status = document.getElementById('skills-status');
+    const editor = document.getElementById('skill-editor');
+    const nameInput = document.getElementById('skill-name');
+    const bodyEn = document.getElementById('skill-body-en');
+    const descriptionRu = document.getElementById('skill-description-ru');
+    const bodyRu = document.getElementById('skill-body-ru');
+    const editorStatus = document.getElementById('skill-editor-status');
+    const uploadInput = document.getElementById('skills-upload');
+    const uploadButton = document.getElementById('skills-upload-button');
+    const newButton = document.getElementById('skills-new');
+    const saveButton = document.getElementById('skill-save');
+    const cancelButton = document.getElementById('skill-cancel');
+
+    let skills = [];
+    let editing = null;
+
+    function setStatus(node, text, isError) {
+        if (!node) return;
+        node.textContent = text || '';
+        node.classList.toggle('is-error', !!isError);
+    }
+
+    async function api(path, options) {
+        // Every write on this tab is CSRF-protected; a bare fetch() is a 400 in a
+        // real browser, which the test suite cannot see because it disables CSRF.
+        const response = await fetchWithCSRF(path, options);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'HTTP ' + response.status);
+        return payload;
+    }
+
+    function markLabel(mark) {
+        if (mark.status === 'offered') return null;
+        if (mark.status === 'typo') return t('Unknown tool') + ': ' + mark.name + ' → ' + mark.suggestion;
+        if (mark.status === 'unavailable') return mark.name + ' — ' + t('Not available here');
+        return mark.name + ' — ' + t('Not available here');
+    }
+
+    function cell(row, text, label) {
+        const td = document.createElement('td');
+        if (label) td.dataset.label = label;
+        if (text instanceof Node) td.appendChild(text);
+        else td.textContent = text;
+        row.appendChild(td);
+        return td;
+    }
+
+    function render() {
+        body.innerHTML = '';
+        const empty = document.getElementById('skills-empty');
+        if (empty) empty.style.display = skills.length ? 'none' : '';
+        skills.forEach((skill) => {
+            const row = document.createElement('tr');
+            row.className = 'skill-row';
+
+            cell(row, skill.name, t('Name'));
+
+            const description = document.createElement('td');
+            description.dataset.label = t('Description');
+            description.textContent = skill.description;
+            if (skill.shadowed) {
+                const note = document.createElement('div');
+                note.className = 'skill-note';
+                note.textContent = t('Shadowed by a bundled skill');
+                description.appendChild(note);
+            }
+            row.appendChild(description);
+
+            const source = document.createElement('td');
+            source.dataset.label = t('Source');
+            const badge = document.createElement('span');
+            badge.className = 'skill-badge skill-badge--' + skill.source;
+            badge.textContent = skill.source === 'bundled' ? t('Bundled') : t('Installed');
+            source.appendChild(badge);
+            row.appendChild(source);
+
+            const tools = document.createElement('td');
+            tools.dataset.label = t('Tools');
+            (skill.allowed_tools || []).forEach((mark) => {
+                const line = document.createElement('div');
+                const label = markLabel(mark);
+                line.className = 'tool-mark tool-mark--' + mark.status;
+                line.textContent = label || mark.name;
+                tools.appendChild(line);
+            });
+            row.appendChild(tools);
+
+            const enabled = document.createElement('td');
+            enabled.dataset.label = t('Enabled');
+            const toggle = document.createElement('input');
+            toggle.type = 'checkbox';
+            toggle.checked = !!skill.enabled;
+            toggle.addEventListener('change', () => setEnabled(skill, toggle));
+            enabled.appendChild(toggle);
+            row.appendChild(enabled);
+
+            const actions = document.createElement('td');
+            actions.dataset.label = t('Actions');
+            if (skill.source === 'bundled') {
+                const readOnly = document.createElement('span');
+                readOnly.className = 'skill-note';
+                readOnly.textContent = t('Read-only');
+                actions.appendChild(readOnly);
+            } else {
+                const edit = document.createElement('button');
+                edit.className = 'btn-small';
+                edit.textContent = skill.shadowed ? t('Rename') : t('Edit');
+                edit.addEventListener('click', () => openEditor(skill));
+                actions.appendChild(edit);
+
+                const remove = document.createElement('button');
+                remove.className = 'btn-small btn-danger';
+                remove.textContent = t('Delete');
+                remove.addEventListener('click', () => removeSkill(skill));
+                actions.appendChild(remove);
+            }
+            row.appendChild(actions);
+
+            body.appendChild(row);
+        });
+    }
+
+    async function load() {
+        try {
+            const payload = await api('/admin/api/skills');
+            skills = payload.skills || [];
+            render();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    async function setEnabled(skill, checkbox) {
+        try {
+            await api('/admin/api/skills/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: skill.name, enabled: checkbox.checked }),
+            });
+            skill.enabled = checkbox.checked;
+            setStatus(status, checkbox.checked ? t('Skill enabled') : t('Skill disabled'));
+        } catch (error) {
+            checkbox.checked = !checkbox.checked;
+            setStatus(status, error.message, true);
+        }
+    }
+
+    async function removeSkill(skill) {
+        if (!window.confirm(skill.name + ' — ' + t('Delete') + '?')) return;
+        try {
+            await api('/admin/api/skills/' + encodeURIComponent(skill.name), { method: 'DELETE' });
+            setStatus(status, t('Skill deleted'));
+            await load();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    function openEditor(skill) {
+        editing = skill || { name: '', body: '', description_ru: '', body_ru: '' };
+        nameInput.value = editing.name;
+        bodyEn.value = editing.body || '';
+        descriptionRu.value = editing.description_ru || '';
+        bodyRu.value = editing.body_ru || '';
+        setStatus(editorStatus, '');
+        editor.hidden = false;
+        bodyEn.focus();
+    }
+
+    function closeEditor() {
+        editing = null;
+        editor.hidden = true;
+    }
+
+    async function save() {
+        if (!editing) return;
+        const name = nameInput.value.trim();
+        try {
+            const payload = await api('/admin/api/skills/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    body_en: bodyEn.value,
+                    description_ru: descriptionRu.value,
+                    body_ru: bodyRu.value,
+                }),
+            });
+            const warnings = payload.warnings || [];
+            // A rename is a save under the new name; the old folder is removed
+            // only after that save succeeded, and only for an installed skill.
+            if (editing.name && editing.name !== name && editing.source !== 'bundled') {
+                await api('/admin/api/skills/' + encodeURIComponent(editing.name), { method: 'DELETE' });
+            }
+            setStatus(status, warnings.length ? warnings.join(' · ') : t('Skill saved'), warnings.length > 0);
+            closeEditor();
+            await load();
+        } catch (error) {
+            setStatus(editorStatus, error.message, true);
+        }
+    }
+
+    async function upload(file) {
+        const data = new FormData();
+        data.append('file', file);
+        try {
+            const payload = await api('/admin/api/skills/upload', { method: 'POST', body: data });
+            const warnings = payload.warnings || [];
+            setStatus(status, warnings.length ? warnings.join(' · ') : t('Skill saved'), warnings.length > 0);
+            await load();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    if (uploadButton && uploadInput) {
+        uploadButton.addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', () => {
+            if (uploadInput.files && uploadInput.files[0]) upload(uploadInput.files[0]);
+            uploadInput.value = '';
+        });
+    }
+    if (newButton) newButton.addEventListener('click', () => openEditor(null));
+    if (saveButton) saveButton.addEventListener('click', save);
+    if (cancelButton) cancelButton.addEventListener('click', closeEditor);
+    document.addEventListener('DOMContentLoaded', load);
+})();
+<\/script>
 
 <script>// app/static/js/admin-cameras.js
 // Camera rooms — sync from room-snapshot-api + preview thumbnails
@@ -20029,7 +21031,7 @@ function updateThumbnail(code, image) {
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="About">
-            FLAI v13.4
+            FLAI v13.5
         </button>
     </footer>
 
@@ -20040,7 +21042,7 @@ function updateThumbnail(code, image) {
             <button type="button" class="about-modal-close" data-close-about aria-label="Close">&times;</button>
             <img src="data:image/png;base64,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" alt="" class="about-logo">
             <h2 id="about-modal-title">Fully Local AI (FLAI)</h2>
-            <p class="about-version">v13.4</p>
+            <p class="about-version">v13.5</p>
             <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">(c) 2026 Valery Barsukov</p>
         </div>
@@ -20606,6 +21608,119 @@ document.addEventListener('DOMContentLoaded', () => {
         }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
     });
 })();<\/script>
+    <script>// app/static/js/scheduler-panel.js
+// The user's scheduled items, in the profile popup: what will happen and when.
+// There is no editor on purpose — a schedule is changed by deleting it and asking again,
+// so this stays a list with one action. Labels arrive through data attributes, the same
+// way the API-keys section carries its own.
+
+const SCHEDULER_ENDPOINT = '/api/scheduler/items';
+
+function schedulerSection() {
+    return document.getElementById('scheduler-section');
+}
+
+function schedulerLabel(name, fallback) {
+    const section = schedulerSection();
+    return (section && section.dataset[name]) || fallback;
+}
+
+function schedulerRequest(url, options = {}) {
+    if (typeof fetchWithCSRF === 'function') return fetchWithCSRF(url, options);
+    return fetch(url, { ...options, credentials: 'same-origin' });
+}
+
+function schedulerFormatRun(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const locale = window.CURRENT_LANG === 'en' ? 'en-GB' : 'ru-RU';
+    return date.toLocaleString(locale, {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function schedulerRow(item) {
+    const row = document.createElement('div');
+    row.className = 'scheduler-item';
+
+    const icon = document.createElement('span');
+    icon.className = 'scheduler-item-icon';
+    icon.textContent = item.kind === 'action' ? '⚙️' : '🔔';
+
+    const text = document.createElement('span');
+    text.className = 'scheduler-item-text';
+
+    const title = document.createElement('span');
+    title.className = 'scheduler-item-title';
+    title.textContent = item.title || '—';
+
+    const when = document.createElement('span');
+    when.className = 'scheduler-item-when';
+    when.textContent = item.enabled === false
+        ? schedulerLabel('finishedLabel', 'finished')
+        : schedulerFormatRun(item.next_run_at);
+
+    text.appendChild(title);
+    text.appendChild(when);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'scheduler-item-delete';
+    remove.textContent = schedulerLabel('deleteLabel', 'Delete');
+    remove.addEventListener('click', () => schedulerDelete(item, remove));
+
+    row.appendChild(icon);
+    row.appendChild(text);
+    row.appendChild(remove);
+    return row;
+}
+
+async function schedulerLoad() {
+    const container = document.getElementById('scheduler-items');
+    if (!container) return;
+    const response = await schedulerRequest(SCHEDULER_ENDPOINT);
+    if (!response.ok) return;
+    const data = await response.json();
+    container.replaceChildren();
+    const items = data.items || [];
+    if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'api-keys-hint';
+        empty.textContent = schedulerLabel('emptyLabel', 'Nothing scheduled');
+        container.appendChild(empty);
+        return;
+    }
+    items.forEach((item) => container.appendChild(schedulerRow(item)));
+}
+
+async function schedulerDelete(item, button) {
+    const template = schedulerLabel('confirmTemplate', 'Delete the schedule "{title}"?');
+    const question = template.replace('{title}', item.title || '—');
+    if (!window.confirm(question)) return;
+    button.disabled = true;
+    const response = await schedulerRequest(`${SCHEDULER_ENDPOINT}/${encodeURIComponent(item.id)}/delete`, {
+        method: 'POST'
+    });
+    if (!response.ok) {
+        button.disabled = false;
+        return;
+    }
+    schedulerLoad();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const button = document.getElementById('api-keys-btn');
+    const panel = document.getElementById('api-keys-panel');
+    if (!button || !panel || !schedulerSection()) return;
+    // Loaded when the popup opens, not on every page: the list is only ever read there.
+    button.addEventListener('click', () => {
+        if (!panel.hidden) schedulerLoad();
+    });
+});
+
+window.schedulerLoad = schedulerLoad;
+<\/script>
 
     <\!-- Guest theme switcher script -->
     <script>// static/js/guest-theme.js

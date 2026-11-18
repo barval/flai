@@ -215,6 +215,11 @@ function handleEvent(event) {
                 onTaskStage(event.data);
             }
             break;
+        case 'scheduler_popup':
+            if (typeof onSchedulerPopup === 'function') {
+                onSchedulerPopup(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }
@@ -248,6 +253,13 @@ const TOOL_META = {
     rag_search: ['📚', 'tool_rag_search'],
     camera_snapshot: ['📹', 'tool_camera_snapshot'],
     read_page: ['🕸️', 'tool_read_page'],
+    net_dns: ['📡', 'tool_net_dns'],
+    net_whois: ['📡', 'tool_net_whois'],
+    net_ping: ['📡', 'tool_net_ping'],
+    net_trace: ['📡', 'tool_net_trace'],
+    net_ports: ['📡', 'tool_net_ports'],
+    net_http: ['📡', 'tool_net_http'],
+    net_speed: ['📡', 'tool_net_speed'],
 };
 
 function getToolLabel(toolName) {
@@ -1461,6 +1473,12 @@ function onMessageNew(data) {
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {
         setNewMessageIndicator(data.session_id, true);
+        // A chat the sidebar has never seen (the scheduler's, created on first delivery)
+        // must appear now: the flag above is remembered per id and the reload picks it up.
+        if (typeof sessionsData !== 'undefined' && !sessionsData[data.session_id]
+            && typeof reloadSessionsForIncomingMessage === 'function') {
+            reloadSessionsForIncomingMessage();
+        }
         return;
     }
     if (displayedMessageIds.has(data.message_id)) {
@@ -1533,7 +1551,8 @@ function onMessageNew(data) {
                     msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                     msg.timestamp, responseTime, msg.model_name,
                     msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                    msg.scheduler_kind
                 );
             }
             if (sessionsData[data.session_id]) {
@@ -1571,7 +1590,8 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                        msg.scheduler_kind
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;

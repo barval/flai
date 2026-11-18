@@ -14,6 +14,7 @@
         <button class="admin-tab" data-tab="settings">{{ _('Settings') }}</button>
         <button class="admin-tab" data-tab="hub">{{ _('Model Hub') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        <button class="admin-tab" data-tab="skills">{{ _('Skills') }}</button>
         <button class="admin-tab" data-tab="mcp">{{ _('MCP') }}</button>
         {% if camera_enabled %}
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
@@ -61,6 +62,11 @@
                     {% set incoming_header = _('Incoming tokens').split(' ', 1) %}
                     {% set documents_header = _('Documents (shared)').split(' ', 1) %}
                     {% set internet_header = _('Internet requests').split(' ', 1) %}
+                    {% set net_tools_header = _('Network tools').split(' ', 1) %}
+                    {% set slm_facts_header = _('SLM Facts').split(' ', 1) %}
+                    {% set tavily_header = _('Tavily API').split(' ', 1) %}
+                    {% set flai_api_header = _('FLAI API').split(' ', 1) %}
+                    {% set camera_header = _('Camera access').split(' ', 1) %}
                     <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
                         <th data-sort="login">{{ _('Login') }}</th>
@@ -75,12 +81,13 @@
                         <th data-sort="messages_count">{{ _('Messages') }}</th>
                         <th data-sort="files_count">{{ _('Files') }}</th>
                         <th data-sort="documents_count">{{ documents_header[0] }}<br>{{ documents_header[1] }}</th>
-                        <th data-sort="slm_facts_count">{{ _('SLM Facts') }}</th>
+                        <th data-sort="slm_facts_count">{{ slm_facts_header[0] }}<br>{{ slm_facts_header[1] }}</th>
                         <th data-sort="web_requests_month">{{ internet_header[0] }}<br>{{ internet_header[1] }}</th>
-                        <th>{{ _('Tavily API') }}</th>
-                        <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
+                        <th>{{ tavily_header[0] }}<br>{{ tavily_header[1] }}</th>
+                        <th data-sort="api_keys_count">{{ flai_api_header[0] }}<br>{{ flai_api_header[1] }}</th>
+                        <th>{{ net_tools_header[0] }}<br>{{ net_tools_header[1] }}</th>
                         {% if rooms %}
-                        <th>{{ _('Camera access') }}</th>
+                        <th>{{ camera_header[0] }}<br>{{ camera_header[1] }}</th>
                         {% endif %}
                         <th>{{ _('Actions') }}</th>
                      </tr>
@@ -106,6 +113,26 @@
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>{{ _('Network calls') }}</h3>
+                <span class="monitoring-value">{{ _('24 h') }}</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Time') }}</th>
+                        <th>{{ _('User') }}</th>
+                        <th>{{ _('Tool') }}</th>
+                        <th>{{ _('Target') }}</th>
+                        <th>{{ _('Result') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">{{ _('No network calls in the last 24 hours') }}</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -371,6 +398,58 @@
         </div>
     </div>
 
+    <!-- Skills tab content -->
+    <div id="skills-tab" class="admin-tab-content">
+        <div class="skills-toolbar">
+            <button id="skills-upload-button" class="btn-primary">{{ _('Upload .md') }}</button>
+            <input type="file" id="skills-upload" accept=".md,text/markdown" hidden>
+            <button id="skills-new" class="add-user-button">{{ _('New skill') }}</button>
+            <span id="skills-status" class="settings-status"></span>
+        </div>
+        <div class="skills-table-wrapper">
+            <table id="skills-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Name') }}</th>
+                        <th>{{ _('Description') }}</th>
+                        <th>{{ _('Source') }}</th>
+                        <th>{{ _('Tools') }}</th>
+                        <th>{{ _('Enabled') }}</th>
+                        <th>{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="skills-body"></tbody>
+            </table>
+            <div id="skills-empty" class="no-backups">{{ _('No skills installed') }}</div>
+        </div>
+
+        <div id="skill-editor" class="skill-editor" hidden>
+            <label class="skill-field">
+                <span>{{ _('Skill name') }}</span>
+                <input type="text" id="skill-name" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Skill document (SKILL.md)') }}</span>
+                <textarea id="skill-body-en" rows="14" spellcheck="false"></textarea>
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Russian description (optional)') }}</span>
+                <input type="text" id="skill-description-ru" autocomplete="off">
+                <small class="skill-hint">{{ _('Leave it empty and the base description is shown instead') }}</small>
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Russian body (optional)') }}</span>
+                <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+                <small class="skill-hint">{{ _('Leave it empty and the base description is shown instead') }}</small>
+            </label>
+            <div class="skill-editor-actions">
+                <button id="skill-save" class="btn-primary">{{ _('Save') }}</button>
+                <button id="skill-cancel" class="btn-secondary">{{ _('Cancel') }}</button>
+                <span id="skill-editor-status" class="settings-status"></span>
+            </div>
+        </div>
+    </div>
+
     <!-- Cameras tab content -->
     {% if camera_enabled %}
     <div id="cameras-tab" class="admin-tab-content">
@@ -558,6 +637,8 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'monitoring_no_data': {{ _('No data in this range')|tojson }},
     'monitoring_load_error': {{ _('Failed to load monitoring data')|tojson }},
     'monitoring_since': {{ _('History since {date}')|tojson }},
+    'monitoring_net_empty': {{ _('No network calls in the last 24 hours')|tojson }},
+    'net_tools_help': {{ _('Network diagnostics tools for this user')|tojson }},
     'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
     'error': {{ _('Error')|tojson }},
     'internal_server_error': {{ _('Internal server error')|tojson }},
@@ -581,6 +662,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'files': {{ _('Files')|tojson }},
     'documents': {{ _('Documents')|tojson }},
     'camera_access': {{ _('Camera access')|tojson }},
+    'Network tools': {{ _('Network tools')|tojson }},
     'actions': {{ _('Actions')|tojson }},
     'active': {{ _('Active')|tojson }},
     'create': {{ _('Create')|tojson }},
@@ -623,8 +705,14 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'settings_secret_empty': {{ _('Not set')|tojson }},
     'settings_secret_set': {{ _('A value is stored')|tojson }},
     'Search and crawl': {{ _('Search and crawl')|tojson }},
+    'Network diagnostics': {{ _('Network diagnostics')|tojson }},
     'Documents and RAG': {{ _('Documents and RAG')|tojson }},
     'Tasks': {{ _('Tasks')|tojson }},
+    'Scheduler': {{ _('Scheduler')|tojson }},
+    'Source': {{ _('Source')|tojson }},
+    'Enabled': {{ _('Enabled')|tojson }},
+    'Delete': {{ _('Delete')|tojson }},
+
     'MCP': {{ _('MCP')|tojson }},
     'Models and context': {{ _('Models and context')|tojson }},
     'Media generation': {{ _('Media generation')|tojson }},
@@ -636,6 +724,9 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Debug': {{ _('Debug')|tojson }},
     'Description': {{ _('Description')|tojson }},
     'Use the per-user Tavily key before the local search engine': {{ _('Use the per-user Tavily key before the local search engine')|tojson }},
+    'Offer the network diagnostics tools to users who were granted them': {{ _('Offer the network diagnostics tools to users who were granted them')|tojson }},
+    'Network diagnostics service URL': {{ _('Network diagnostics service URL')|tojson }},
+    'Bearer token for the network diagnostics service': {{ _('Bearer token for the network diagnostics service')|tojson }},
     'Tavily API base URL': {{ _('Tavily API base URL')|tojson }},
     'Tavily search request timeout (seconds)': {{ _('Tavily search request timeout (seconds)')|tojson }},
     'Timeout for the Tavily quota lookup (seconds)': {{ _('Timeout for the Tavily quota lookup (seconds)')|tojson }},
@@ -705,6 +796,16 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Characters of media descriptions kept in context': {{ _('Characters of media descriptions kept in context')|tojson }},
     "Manual cap on the documents' share of the window (0 = derived from the window and the corpus)": {{ _("Manual cap on the documents' share of the window (0 = derived from the window and the corpus)")|tojson }},
     'Manual cap on the conversation share of the window (0 = derived from what the session holds)': {{ _('Manual cap on the conversation share of the window (0 = derived from what the session holds)')|tojson }},
+    'Deliver scheduled reminders and actions at all': {{ _('Deliver scheduled reminders and actions at all')|tojson }},
+    'Minutes late before a firing counts as missed rather than on time': {{ _('Minutes late before a firing counts as missed rather than on time')|tojson }},
+    'How many model rounds one action may spend before it must answer': {{ _('How many model rounds one action may spend before it must answer')|tojson }},
+    'Seconds one action may run before it stops; checked before each round': {{ _('Seconds one action may run before it stops; checked before each round')|tojson }},
+    'The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)': {{ _('The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)')|tojson }},
+    'A reminder missed while the server was down: all of them, only the last one, or none': {{ _('A reminder missed while the server was down: all of them, only the last one, or none')|tojson }},
+    'An action missed while the server was down: all of them, only the last one, or none': {{ _('An action missed while the server was down: all of them, only the last one, or none')|tojson }},
+    'The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped': {{ _('The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped')|tojson }},
+    'Minutes before its target an action is queued, so its answer is ready on time': {{ _('Minutes before its target an action is queued, so its answer is ready on time')|tojson }},
+    'Minutes after its target a run that never started is cancelled with a short notice': {{ _('Minutes after its target a run that never started is cancelled with a short notice')|tojson }},
     'How much work one task request may spend: min, norm or max (applies after a restart)': {{ _('How much work one task request may spend: min, norm or max (applies after a restart)')|tojson }},
     'When a step is checked: each, final or off (applies after a restart)': {{ _('When a step is checked: each, final or off (applies after a restart)')|tojson }},
     'Offer tools from the configured MCP servers to the chat model (applies immediately)': {{ _('Offer tools from the configured MCP servers to the chat model (applies immediately)')|tojson }},
@@ -1042,9 +1143,21 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'branding_logo_deleted': {{ _('Custom logo deleted — the built-in logo is shown')|tojson }},
     'branding_logo_too_large': {{ _('Logo is too large (max 2 MB)')|tojson }},
     'branding_names_saved': {{ _('Site names saved')|tojson }},
-    'branding_both_required': {{ _('Both language variants are required')|tojson }},
     'branding_name_too_long': {{ _('Site name is too long (max 40 characters per language)')|tojson }},
-    'branding_upload_failed': {{ _('Logo upload failed')|tojson }}
+    'branding_upload_failed': {{ _('Logo upload failed')|tojson }},
+    'Bundled': {{ _('Bundled')|tojson }},
+    'Installed': {{ _('Installed')|tojson }},
+    'Shadowed by a bundled skill': {{ _('Shadowed by a bundled skill')|tojson }},
+    'Rename': {{ _('Rename')|tojson }},
+    'Read-only': {{ _('Read-only')|tojson }},
+    'Edit': {{ _('Edit')|tojson }},
+    'Not available here': {{ _('Not available here')|tojson }},
+    'Unknown tool': {{ _('Unknown tool')|tojson }},
+    'Skill saved': {{ _('Skill saved')|tojson }},
+    'Skill deleted': {{ _('Skill deleted')|tojson }},
+    'Skill enabled': {{ _('Skill enabled')|tojson }},
+    'Skill disabled': {{ _('Skill disabled')|tojson }},
+    'The same name is already taken': {{ _('The same name is already taken')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -1059,6 +1172,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin-monitoring.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-settings.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-mcp.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-skills.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
 {% endif %}

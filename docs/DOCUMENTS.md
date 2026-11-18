@@ -36,6 +36,31 @@ longer visited.
 
 Sharing is per document, never per folder.
 
+### Appending to a document
+
+A document the assistant wrote can be appended to instead of replaced: `write_document` with
+`append: true` finds the document by its display name, writes into the same file, and charges
+the quota on the delta. Only a document this tool created is eligible — an upload's bytes are
+shared through the content-addressed blob store, so appending to a same-named upload would
+edit a file another user also references. The file stops at 2 MB, and a document that was
+indexed is marked **stale** rather than re-indexed on every append: a log written every fifteen
+minutes would otherwise rebuild its index ninety-six times a day.
+
+### Names are first come, first served
+
+A document's display name belongs to whoever used it first. An upload keeps the name it
+arrived with, and the assistant cannot take it: a write to a name an upload already holds is
+refused (`⚠️ ` sentence naming the file), so the model can report the conflict or choose
+another name. In the other direction an upload whose name the assistant already wrote is
+offered a rename instead of being silently suffixed — the person chose that name and should
+hear about the collision.
+
+Two names the assistant itself wrote collide differently: the second write gets ` (2)`,
+because there is no person to ask and a log with two files is better than a refusal. There is
+**no content deduplication for written documents** — that exists for uploads (identical bytes
+are stored once); a generated file is stored in full. If that ever matters, it is a change to
+`app/documents_write.py`, not to the upload path.
+
 ## Upload limits
 
 | What | Limit | Variable |
@@ -47,6 +72,34 @@ Sharing is per document, never per folder.
 | Scanned-PDF OCR budget | 30 min per document | `OCR_TIME_BUDGET_S` (0 = unlimited) |
 
 When the OCR budget expires, the pages recognized so far are indexed and the user is notified how far the recognition went.
+
+## Documents the assistant writes
+
+The model can produce a file, not only a paragraph. `write_document` stores text as an
+ordinary document of the person who asked, so it appears in the Documents panel, can be
+searched, shared, moved and deleted, and is **indexed and added to the knowledge graph
+on the same path as an upload** — under the same `GRAPH_AUTO_EXTRACT` switch, with no
+rule of its own.
+
+| | |
+|---|---|
+| Formats | `.md` (default), `.csv`, `.json`, `.txt` |
+| CSV | the model passes `rows` — a list of rows, each a list of cells — so a comma or a quote inside a value cannot corrupt the file |
+| JSON | validated before writing: a file that does not parse is refused instead of stored |
+| Size | at most 256 KB of text per call |
+| Name | a display name only; the server strips any path, caps it at 120 characters and appends the extension |
+| Collision | a name the user already has gets ` (2)`, ` (3)` — a generated file never overwrites another |
+| Quota | checked **before** anything is written, against the same document quota as an upload |
+| Preview | shown as plain text; Markdown is not rendered in the panel |
+
+A document written this way carries `source = 'generated'`, and the panel marks it with a
+badge. The `source` column distinguishes all four origins — `upload`, `crawl` (a site the
+crawler saved), `chat` (a file attached to a message) and `generated`. Rows that predate
+the column read `upload`; nothing can tell them apart retroactively.
+
+Ask for it in plain language — "put a report together from these contracts and give it to
+me as a file", "save that as a table". The tool answers with the stored name and the size,
+and indexing happens in the background.
 
 ## 1. Configure RAG in Admin Panel
 

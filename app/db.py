@@ -97,6 +97,7 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
             cs.id,
             cs.title,
             cs.model_name,
+            cs.scheduler_kind,
             cs.created_at,
             cs.updated_at,
             COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00') as last_visit,
@@ -109,7 +110,7 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
         FROM chat_sessions cs
         LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = %s
         WHERE cs.user_id = %s
-        GROUP BY cs.id, cs.title, cs.model_name, cs.created_at, cs.updated_at
+        GROUP BY cs.id, cs.title, cs.model_name, cs.scheduler_kind, cs.created_at, cs.updated_at
         ORDER BY cs.updated_at DESC
         """,
             (user_id, user_id),
@@ -175,7 +176,8 @@ def get_session_messages(
             SELECT id, role, content, file_type, file_name, file_path,
                    CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
-                   mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens
+                   mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens,
+                   scheduler_item_id, scheduler_kind
             FROM messages
             WHERE session_id = %s AND timestamp > %s
             ORDER BY timestamp ASC, id ASC
@@ -189,7 +191,8 @@ def get_session_messages(
             SELECT id, role, content, file_type, file_name, file_path,
                    CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
-                   mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens
+                   mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens,
+                   scheduler_item_id, scheduler_kind
             FROM messages
             WHERE session_id = %s
             ORDER BY timestamp ASC, id ASC
@@ -317,7 +320,8 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     SELECT id, role, content, file_type, file_name, file_path,
                            CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                            timestamp, model_name, response_time, mm_time, gen_time,
-                           mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens
+                           mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens,
+                           scheduler_item_id, scheduler_kind
                     FROM messages WHERE id = %s AND session_id = %s
                     """,
                     (message_id, session_id),
@@ -370,6 +374,8 @@ def save_message(
     completion_tokens=None,
     model_type=None,
     prompt_tokens=None,
+    scheduler_item_id=None,
+    scheduler_kind=None,
 ):
     """Save a message to the database.
 
@@ -398,8 +404,9 @@ def save_message(
         INSERT INTO messages (
             session_id, role, content, file_data, file_type, file_name, file_path,
             model_name, timestamp, response_time, mm_time, gen_time,
-            mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens,
+            scheduler_item_id, scheduler_kind
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
             (
@@ -421,6 +428,8 @@ def save_message(
                 completion_tokens,
                 model_type,
                 prompt_tokens,
+                scheduler_item_id,
+                scheduler_kind,
             ),
         )
         # PostgreSQL: lastrowid is always 0 — the real id comes from RETURNING.
@@ -592,6 +601,11 @@ INDEX_STATUS_PENDING = "pending"
 INDEX_STATUS_INDEXING = "indexing"
 INDEX_STATUS_INDEXED = "indexed"
 INDEX_STATUS_FAILED = "failed"
+# A document the assistant wrote: stored and readable, but out of RAG and the graph
+# until its owner ticks the box on its card.
+INDEX_STATUS_NOT_INDEXED = "not_indexed"
+# Appended to after it was indexed: the vectors still exist and are out of date.
+INDEX_STATUS_STALE = "stale"
 
 
 def _localize_document_dates(documents):
@@ -671,7 +685,7 @@ def get_user_documents(user_id, include_shared=False, with_share_counts=False):
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
                index_status, indexed_at, indexing_started_at, embedding_model, description_model,
-               folder_id
+               folder_id, source
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC
@@ -699,7 +713,7 @@ def get_user_documents(user_id, include_shared=False, with_share_counts=False):
                 """
             SELECT d.id, d.filename, d.file_size, d.file_ext, d.file_path, d.uploaded_at,
                    d.index_status, d.indexed_at, d.indexing_started_at, d.embedding_model,
-                   d.description_model, d.folder_id, s.owner_login AS shared_by
+                   d.description_model, d.folder_id, d.source, s.owner_login AS shared_by
             FROM document_shares s
             JOIN documents d ON d.id = s.document_id
             WHERE s.shared_with = %s
@@ -758,7 +772,7 @@ def get_shared_document(document_id, viewer_login):
             """
         SELECT d.id, d.user_id, d.filename, d.file_size, d.file_ext, d.file_path, d.index_status,
                d.indexed_at, d.uploaded_at, d.embedding_model, d.folder_id, d.blob_sha256,
-               d.stored_bytes, s.owner_login AS shared_by
+               d.stored_bytes, d.source, s.owner_login AS shared_by
         FROM document_shares s
         JOIN documents d ON d.id = s.document_id
         WHERE s.document_id = %s AND s.shared_with = %s
@@ -896,7 +910,7 @@ def delete_document_resources(doc, login, refresh_stats=True):
 
 
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None,
-                  blob_sha256=None, stored_bytes=None):
+                  blob_sha256=None, stored_bytes=None, source="upload"):
     """Save document metadata to database.
 
     ``stored_bytes`` is what this upload added to the disk: the file size when it
@@ -909,8 +923,8 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, fol
         c.execute(
             """
         INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id,
-                               blob_sha256, stored_bytes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               blob_sha256, stored_bytes, source)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 doc_id,
@@ -923,8 +937,15 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, fol
                 folder_id,
                 blob_sha256,
                 stored_bytes if stored_bytes is not None else file_size,
+                source,
             ),
         )
+
+
+def update_document_size(doc_id, file_size):
+    """Record a document's new size after an append."""
+    with get_db() as conn:
+        conn.cursor().execute("UPDATE documents SET file_size = %s WHERE id = %s", (file_size, doc_id))
 
 
 def update_document_index_status(doc_id, index_status, indexed_at=None, indexing_started_at=None, embedding_model=None):
@@ -981,7 +1002,7 @@ def get_document(doc_id, user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at,
-               embedding_model, blob_sha256, stored_bytes
+               embedding_model, blob_sha256, stored_bytes, source
         FROM documents
         WHERE id = %s AND user_id = %s
         """,

@@ -8,7 +8,9 @@ import pendulum
 import pytest
 
 from app.tools import (
+    SCHEDULER_TOOLS,
     TOOL_DEFINITIONS,
+    WRITE_DOCUMENT_TOOL,
     execute_tool,
     get_tool_definitions,
     safe_eval,
@@ -252,19 +254,23 @@ class TestToolDefinitions:
         # always a fresh list because the skill loader and the operator-configured
         # MCP tools are appended to it.
         catalogue = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+        # Always appended to the base catalogue: the document writer, the scheduler tools
+        # (unless the installation switches the scheduler off) and the skill loader.
+        always = {WRITE_DOCUMENT_TOOL} | set(SCHEDULER_TOOLS)
         with app.app_context(), patch("app.skills.discover", return_value=[]):
             defs = get_tool_definitions()
             names = {d["function"]["name"] for d in defs}
-            assert "read_page" not in names
-            assert names <= catalogue
+            assert "read_page" not in names, "no crawler, no page reader"
+            # The page reader needs the crawler, the room list needs the camera: neither
+            # service is configured in the test app, so both are withheld on purpose.
+            assert catalogue - {"read_page", "list_rooms"} <= names, "the rest of the catalogue is offered"
+            assert always <= names, "the document writer and the scheduler tools are offered"
             assert defs is not TOOL_DEFINITIONS
             with patch("app.tools.get_crawler_module", return_value=object()):
                 defs = get_tool_definitions()
-        # With the crawler present every catalogue entry is offered; the camera
-        # tools appear only when the module is available, which the test app's
-        # configuration decides.
-        assert {d["function"]["name"] for d in defs} >= catalogue - {"list_rooms"}
-        assert len(defs) == len(catalogue) - (0 if "list_rooms" in {d["function"]["name"] for d in defs} else 1)
+        names = [d["function"]["name"] for d in defs]
+        assert "read_page" in names, "the crawler adds the page reader"
+        assert len(names) == len(set(names)), "no tool is offered twice"
 
 
 # ── execute_tool tests ───────────────────────────────────────────────

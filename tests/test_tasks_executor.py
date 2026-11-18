@@ -2396,6 +2396,7 @@ def test_parse_plan_keeps_valid_source_step():
 def test_parse_plan_plain_requests_still_parse():
     assert ex._parse_plan('{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}') == {
         "title": "t",
+        "skills": [],
         "steps": [
             {
                 "seq": 1,
@@ -2404,6 +2405,8 @@ def test_parse_plan_plain_requests_still_parse():
                 "checkpoint_criteria": "",
                 "user_input_expected": False,
                 "source_step": None,
+                # The plan carries a step's parameters (v13.1): absent means empty.
+                "extra": {},
             }
         ],
     }
@@ -4737,3 +4740,23 @@ def test_plan_audit_failure_keeps_the_plan(test_app, monkeypatch):
     assert result is plan
     assert meta["valid"] is None
     assert "model unavailable" in meta["reason"]
+
+
+def test_plan_phase_keeps_the_original_request(db_env, test_app, gate_open, monkeypatch):
+    """A scheduler-launched task carries a short list title and a long goal.
+
+    The goal lives in `step_plan.task_request`; the plan phase must not drop it, or a later
+    plan review would re-read the title and lose what the person actually asked for.
+    """
+    store = db_env
+    goal = "Snapshots of every room; write date, time, room and description to events.txt"
+    task_id = _mk_task(store, step_plan={"task_request": goal})
+    plan_json = '{"steps": [{"seq": 1, "goal": "g1", "tool": "llm", "checkpoint_criteria": "c1"}]}'
+    monkeypatch.setattr(ex, "_run_planner", lambda *a, **k: plan_json)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["step_plan"]["task_request"] == goal
+    assert t["title"] == "seed"

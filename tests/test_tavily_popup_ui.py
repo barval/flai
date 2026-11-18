@@ -26,7 +26,9 @@ class TestTavilyPopupMarkup:
         assert 'id="tavily-key-input"' in html
         assert 'id="tavily-key-add-btn"' in html
         assert 'id="tavily-key-del-btn"' in html
-        assert html.index('id="tavily-section"') < html.index('class="api-keys-header"')
+        # Anchor on the API keys block itself: other sections in the popup (the
+        # scheduled list) reuse the same header class above it.
+        assert html.index('id="tavily-section"') < html.index('id="api-keys-close"')
 
     def test_registration_link_points_at_tavily(self, popup_client):
         html = popup_client.get("/chat").get_data(as_text=True)

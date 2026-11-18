@@ -11,9 +11,19 @@ const USER_CARD_LABELS = [
 
 function labelUserCardCells(row) {
     const cells = Array.from(row.children);
-    const labels = cells.length === USER_CARD_LABELS.length + 2
-        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
-        : [...USER_CARD_LABELS, 'Actions'];
+    // The trailing columns depend on what the panel renders, so the row itself says
+    // whether the camera column is there. Counting cells instead let one added
+    // column shift every label after it — the camera cell printed "Actions" and the
+    // network cell printed nothing.
+    const hasCamera = !!row.querySelector('.camera-checkboxes');
+    // The row builds the network cell before the camera one, and the header prints
+    // them in that order; the labels must follow the cells, not the other way round.
+    const labels = hasCamera
+        ? [...USER_CARD_LABELS, 'Network tools', 'Camera access', 'Actions']
+        : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
+    if (cells.length !== labels.length) {
+        console.warn('user card labels do not match the columns:', cells.length, labels.length);
+    }
     cells.forEach((cell, index) => {
         if (labels[index]) cell.dataset.label = t(labels[index]);
     });
@@ -228,6 +238,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -330,6 +348,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {

@@ -26,10 +26,11 @@
         <!-- Sessions list (visible by default) -->
         <div class="sessions-list" id="sessions-list">
             {% for s in sessions %}
+            {% set title_mark = '' if s.title[:1] in ('🔔', '⚙️') else '📝 ' %}
             <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
                 <div class="session-content">
                     <div class="session-info">
-                        <div class="session-title">📝 {{ s.title }}</div>
+                        <div class="session-title">{{ title_mark }}{{ s.title }}</div>
                         <div class="session-date">📅 {{ s.updated_at[:19].replace('T', ' ') }} [{{ s.message_count }}]</div>
                     </div>
                     <button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
@@ -106,6 +107,25 @@
             </div>
         </div>
 
+        <!-- Scheduler popup: a reminder is a message in its own chat and this
+             notification on top of whatever is open. Closing it loses nothing —
+             the message is already stored. -->
+        <div id="scheduler-popup" class="scheduler-popup" hidden>
+            <div class="scheduler-popup-backdrop" data-scheduler-close></div>
+            <div class="scheduler-popup-card" role="dialog" aria-modal="true" aria-labelledby="scheduler-popup-title">
+                <div class="scheduler-popup-head">
+                    <span class="scheduler-popup-icon" aria-hidden="true">🔔</span>
+                    <h3 class="scheduler-popup-title" id="scheduler-popup-title"></h3>
+                    <button type="button" class="scheduler-popup-close" data-scheduler-close
+                            aria-label="{{ _('Close') }}">&times;</button>
+                </div>
+                <p class="scheduler-popup-text" id="scheduler-popup-text"></p>
+                <div class="scheduler-popup-actions">
+                    <button type="button" class="scheduler-popup-button" id="scheduler-popup-ok" data-scheduler-close>{{ _('Close') }}</button>
+                </div>
+            </div>
+        </div>
+
         <!-- The new-task dialog was removed (v12.6 review): «+» creates a draft
      task directly (like a new chat session); the request text goes into the
      ordinary message input. -->
@@ -151,6 +171,8 @@
 <!-- JavaScript translations and configuration -->
 <script>
 window.initialSessionId = {{ current_session|tojson }};
+window.CURRENT_SESSION_KIND = {{ (current_session_kind or '')|tojson }};
+if (window.CURRENT_SESSION_KIND) document.body.classList.add('service-chat');
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.FLAI_MAX_CHAT_IMAGES = {{ config.MAX_CHAT_IMAGES|tojson }};
 window.FLAI_MAX_CHAT_AUDIO = {{ config.MAX_CHAT_AUDIO|tojson }};
@@ -322,6 +344,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_selected_count': {{ _('Selected: {count} ({size})')|tojson }},
     'documents_select_folder': {{ _('Select all documents in folder')|tojson }},
     'documents_select_for_move': {{ _('Select for moving')|tojson }},
+    'documents_index_toggle': {{ _('Index')|tojson }},
+    'documents_index_hint': {{ _('Index for search and graph')|tojson }},
+    'documents_index_stale': {{ _('index is outdated')|tojson }},
     'documents_select_for_analysis': {{ _('Select for deep analysis')|tojson }},
     'documents_view_in_graph': {{ _('View in knowledge graph')|tojson }},
     'graph_title': {{ _('Knowledge graph')|tojson }},
@@ -414,6 +439,13 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'tool_rag_search': {{ _('tool_rag_search')|tojson }},
     'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }},
     'tool_read_page': {{ _('tool_read_page')|tojson }},
+    'tool_net_dns': {{ _('tool_net_dns')|tojson }},
+    'tool_net_whois': {{ _('tool_net_whois')|tojson }},
+    'tool_net_ping': {{ _('tool_net_ping')|tojson }},
+    'tool_net_trace': {{ _('tool_net_trace')|tojson }},
+    'tool_net_ports': {{ _('tool_net_ports')|tojson }},
+    'tool_net_http': {{ _('tool_net_http')|tojson }},
+    'tool_net_speed': {{ _('tool_net_speed')|tojson }},
     'stage_preparing_gpu': {{ _('Preparing resources...')|tojson }},
     'stage_routing': {{ _('Analyzing request...')|tojson }},
     'stage_analyzing': {{ _('Analyzing request...')|tojson }},
@@ -452,7 +484,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'step': {{ _('Step')|tojson }},
     'minute_abbr': {{ _('minute_abbr')|tojson }},
     'second_abbr': {{ _('second_abbr')|tojson }},
-    'timer_zero': {{ _('timer_zero')|tojson }}
+    'timer_zero': {{ _('timer_zero')|tojson }},
+    'scheduler_chat_reminder': {{ _('🔔 Scheduler: reminders')|tojson }},
+    'scheduler_chat_action': {{ _('🛠️ Scheduler: actions')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 {% if config.get('DEBUG_TRANSLATIONS') %}
@@ -471,6 +505,7 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-tts.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-recording.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-export.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-scheduler.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/events.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-queue.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-style.js', v=config.STATIC_VERSION) }}"></script>

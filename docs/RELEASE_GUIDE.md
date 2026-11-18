@@ -1,10 +1,10 @@
-# Release Guide — FLAI v13.4
+# Release Guide — FLAI v13.5
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
 
 The agent skill `opening-flai-release` performs the opening step (cutting the branch from the previous release branch, renaming every current-version marker, emptying What's New); its entry point is [`.opencode/skills/opening-flai-release/SKILL.md`](../.opencode/skills/opening-flai-release/SKILL.md).
 
-The agent skill `preparing-flai-release` automates the mechanical checks in this guide (release-branch merge status, translation parity and compilation, documentation heading parity). Its entry point is [`.opencode/skills/preparing-flai-release/SKILL.md`](../.opencode/skills/preparing-flai-release/SKILL.md); the helper scripts live in `scripts/` next to it.
+The agent skill `preparing-flai-release` is the executable procedure: its gate table is the reference for what a release must check, and its `scripts/` directory holds the mechanical checks — branch merge status, translations and catalog drift, API spec and prose, paths, commands, compose profiles, environment parity, schema changes, release strings, secrets, demo pages. **This guide keeps the documentary steps; the skill keeps the gate.** When the two disagree about a check, the skill is right and this file is corrected. Its entry point is [`.opencode/skills/preparing-flai-release/SKILL.md`](../.opencode/skills/preparing-flai-release/SKILL.md).
 
 > **v10.0 release steps:** Version bump from 9.2 to 10.0 (pyproject.toml, deploy scripts, docs, metrics, `.po` footers). Removed standalone chat model (Qwen3-4B-Instruct) — multimodal model (Qwen3VL-8B-Instruct) is now the single chat/router/vision model. Updated deploy scripts to download multimodal instead of chat. Removed chat from llama-swap config (`ttl=0` for multimodal, `preload: on_startup`). Removed chat card from admin panel. Updated test fixtures: `chat` → `multimodal` in all module-type assertions. DB self-healing: `DELETE FROM model_configs WHERE module = 'chat'` at startup.
 

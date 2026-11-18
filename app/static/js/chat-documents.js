@@ -306,13 +306,20 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                 ${embeddingLine}
                 ${descriptionLine}
             </div>
-            ${documentActions}
+            <div class="document-side">
+                ${documentActions}
+                ${doc.source === 'generated' ? `
+                <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
+                    <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
+                    ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}
+                </label>` : ''}
+            </div>
         </div>
     </div>
     `;
@@ -446,6 +453,32 @@ function attachDocumentEventHandlers() {
         item.addEventListener('click', function(e) {
             if (e.target.closest('.document-checkbox, .document-actions, button, input, label')) return;
             openDocumentPreview(this.dataset.documentId, this.dataset.documentName || '');
+        });
+    });
+    // The indexing switch exists only on documents the assistant wrote; it is the
+    // one place that puts such a document into RAG and the graph.
+    document.querySelectorAll('.doc-index-check').forEach(box => {
+        box.addEventListener('change', async function(e) {
+            e.stopPropagation();
+            const docId = this.dataset.documentId;
+            box.disabled = true;
+            try {
+                const response = await fetchWithCSRF(`/api/documents/${encodeURIComponent(docId)}/index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: box.checked })
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.error || 'HTTP ' + response.status);
+                }
+                await loadDocuments();
+            } catch (err) {
+                box.checked = !box.checked;
+                alert(err.message || String(err));
+            } finally {
+                box.disabled = false;
+            }
         });
     });
     document.querySelectorAll('.delete-document-button').forEach(btn => {
@@ -1429,10 +1462,17 @@ function uploadDocuments(files, folderId) {
             return;
         }
         if (button) button.textContent = (done + 1) + '/' + total;
-        const formData = new FormData();
-        formData.append('file', file);
-        if (folderId) formData.append('folder_id', folderId);
-        fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData })
+
+        // Names are first come, first served: when the assistant already wrote a document
+        // with this name, the uploader is asked for another one instead of getting a
+        // silently suffixed copy.
+        const send = (uploadFile) => {
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            if (folderId) formData.append('folder_id', folderId);
+            return fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData });
+        };
+        checkUploadName(file.name, file).then(renamed => send(renamed || file))
             .then(res => res.json())
             .then(data => {
                 if (data.status !== 'ok') failed.push(file.name + ': ' + uploadReason(data.error));
@@ -1444,6 +1484,26 @@ function uploadDocuments(files, folderId) {
             });
     };
     next();
+}
+
+
+// Ask the server whether the assistant already holds this name; offer a rename if so.
+async function checkUploadName(name, file) {
+    try {
+        const response = await fetchWithCSRF('/api/documents/check-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: name })
+        });
+        if (response.status !== 409) return null;
+        const payload = await response.json();
+        const chosen = window.prompt(payload.error || t('document_upload_failed'), payload.suggested || name);
+        if (!chosen || chosen.trim() === '') return null;
+        if (chosen.trim() === name) return null;
+        return new File([file], chosen.trim(), { type: file.type });
+    } catch (err) {
+        return null;
+    }
 }
 
 // Open the file picker and upload into the chosen folder (null = root).

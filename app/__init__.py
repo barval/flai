@@ -11,6 +11,7 @@ from pathlib import Path
 from flasgger import Swagger
 from flask import Flask, abort, g, jsonify, redirect, request, send_file, session, url_for
 from flask_babel import Babel, gettext
+from flask_babel import get_locale as current_locale
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -166,7 +167,8 @@ def create_app():
     # Resolved per request; DB failures degrade to the built-in brand silently.
     @app.context_processor
     def _inject_branding() -> dict:
-        lang = get_locale() or "ru"
+        lang = str(current_locale() or "ru")
+        ru_name = en_name = ""
         try:
             from app import db as app_db
 
@@ -186,12 +188,17 @@ def create_app():
                         else re.sub(r"[^0-9]", "", str(stamp))[:10]
                     )
                     logo_url = f"/admin/api/branding/logo?v={version}" if version else "/admin/api/branding/logo"
-            name = (branding.get("site_name_ru") if lang == "ru" else branding.get("site_name_en")) or ""
+            ru_name = branding.get("site_name_ru") or ""
+            en_name = branding.get("site_name_en") or ""
+            name = ru_name if lang == "ru" else en_name
         except Exception as e:
             app.logger.warning(f"Branding lookup failed, using defaults: {e}")
             logo_url = None
             name = ""
-        if not name:
+            ru_name = en_name = ""
+        # Only an empty pair means "the built-in brand": a language the admin left
+        # blank stays blank, because a translation is not a prerequisite.
+        if not ru_name and not en_name:
             name = gettext("FLAI")
         return {"branding_logo_url": logo_url, "branding_site_name": name}
 
@@ -396,6 +403,20 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not start tasks executor: {e}")
 
+    # Scheduled reminders and actions: one daemon thread with a Redis lease, so two
+    # workers cannot deliver the same item twice.
+    if not _is_cli_process() and not _is_test_process():
+        try:
+            from datetime import UTC, datetime
+
+            from app import scheduler, scheduler_runs
+
+            scheduler.rename_action_chats(app)
+            scheduler_runs.recover_after_restart(datetime.now(UTC))
+            scheduler.start(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start the scheduler: {e}")
+
     # Warm the chat model before the first message. It goes through
     # ensure_vram_for() like a user request does: llama-swap's own preload hook
     # started the model outside that gate and could leave its weights in RAM.
@@ -428,6 +449,9 @@ def create_app():
         tasks,
         tts,
     )
+    from .routes import (
+        scheduler as scheduler_routes,
+    )
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -444,6 +468,7 @@ def create_app():
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
     app.register_blueprint(tasks.bp)
+    app.register_blueprint(scheduler_routes.bp)
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)
@@ -514,6 +539,7 @@ def create_app():
     app.cli.add_command(cli.graph_status)
     app.cli.add_command(cli.graph_merge_entities)
     app.cli.add_command(cli.graph_stats)
+    app.cli.add_command(cli.net_audit)
 
     from .routes.graph import bp as graph_bp
 

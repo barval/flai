@@ -680,6 +680,24 @@ def backfill_attachment_paths(dry_run):
     click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
 
 
+@click.command("net-audit")
+@click.option("--limit", default=50, show_default=True, help="How many entries to print")
+def net_audit(limit):
+    """Who ran which network diagnostic in the last 24 hours."""
+    from app import netdiag
+
+    calls = netdiag.recent_calls(limit=limit)
+    if not calls:
+        click.echo("No network calls recorded (the audit keeps 24 hours).")
+        return
+    for call in calls:
+        status = "ok" if call.get("ok") else "failed"
+        click.echo(
+            f"{call.get('at', '-')}  {call.get('login', '-')}  {call.get('tool', '-')}  "
+            f"{call.get('target', '-')}  {status}  {call.get('seconds', '-')}s"
+        )
+
+
 @click.command("doctor")
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable report")
 @with_appcontext

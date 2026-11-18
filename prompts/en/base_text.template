@@ -54,6 +54,7 @@ FORBIDDEN: file/code creation → category 8. URLs/websites → category 6.
 Current information: news, weather, prices, statistics, websites, URLs.
 TOP EXCLUSION: the message contains ONE link and asks about THAT PAGE'S CONTENT ('What is this project https://… ?', 'What is on this page?', 'What is this site about?') → that is NOT search. Answer WITHOUT a marker: ordinary chat opens the page with the read_page tool and answers from its content. Search cannot open addresses — [-SEARCH-] on such a query answers from strangers' pages instead of the given one.
 CONVERSION/CALCULATION: to convert or compare an amount at a live rate or price (currency, crypto, units, stocks), the query must ask for the RATE/PRICE itself (e.g. "GBP to RUB exchange rate"), never restate the arithmetic or include a fractional amount — engines answer those with a converter widget and no links.
+{network_rule}
 IMPORTANT: Person's name → category 5, NOT 6.
 IMPORTANT: ONE link + a question about its CONTENT ('what is this project <URL>', 'what is on this page', 'what is this site about') → NOT 6. That is ordinary chat: answer without a marker — the page will be opened by the read_page tool. Category 6 searches the web for FACTS about an entity; it cannot open the address itself.
 
@@ -84,6 +85,25 @@ The request asks to THOROUGHLY study a site or its section: 'study the docs at X
 This is MULTI-PAGE reading (minutes), not a single-fact lookup.
 Do NOT include: ordinary fact search (category 6), complex question with fresh data (category 10), or opening one specific link (that is ordinary chat — the read_page tool).
 Link in the message: the message contains ONE link and asks about its CONTENT ('what is this project <URL>', 'what does this page say') → answer WITHOUT a marker — ordinary chat will open the page with the read_page tool. Do NOT route such messages to [-SEARCH-]: search cannot open addresses.
+
+## 12. NETWORK — [-NET-] and the target
+A request to MEASURE or CHECK a network: "measure the speed to ...", "run iperf3 ...", "check the ping to ...", "which ports are open on ...", "who owns a domain ...", "what does a name resolve to ...", "what certificate does a site have ...", "is the host up ...".
+After the marker — the target exactly as the user wrote it.
+NOT 6: a search engine returns articles about how to check and no measurement.
+NOT 8: reasoning cannot measure anything.
+
+## 13. REMINDER OR ACTION AT A TIME — [-SCHEDULE-] and the request
+A request to be reminded of something, or to have something DONE, at a stated time: "remind me tomorrow at nine about the report", "every Friday at 16:00 check the logs", "in fifteen minutes remind me about the oven", "on 18 November at 10:00 check the rooms".
+After the marker — the user's request as written: the model works out the moment from words like "tomorrow" or "in fifteen minutes".
+NOT 6: a search engine cannot schedule anything.
+NOT 8: this is not reasoning, it is an action at a time.
+NOT 1: a simple request names no time and asks for nothing later.
+
+## 14. CREATING A DOCUMENT — [-WRITE-] and the request
+A request to create or save a file or document with content: "create тест.txt with the current date", "save this to a file", "make the report a file", "write the list as CSV".
+After the marker — the user's request as written.
+NOT 8: this is not code writing, it is a file — a tool creates it.
+NOT 6: a search engine creates no files.
 
 # INPUT DATA
 

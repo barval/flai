@@ -51,6 +51,7 @@ SECRET_KEYS = {
     "QDRANT_API_KEY",
     "HUGGINGFACE_TOKEN",
     "CRAWL_API_TOKEN",
+    "NETDIAG_API_TOKEN",
 }
 
 # Group id → (label, keys). The order here is the order in the panel.
@@ -81,6 +82,14 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "CRAWL_MAX_TOTAL_CHARS",
             "CRAWL_CONCURRENCY",
             "RAG_MAX_RESULTS_CHARS",
+        ],
+    ),
+    "network": (
+        "Network diagnostics",
+        [
+            "NET_TOOLS_ENABLED",
+            "NETDIAG_URL",
+            "NETDIAG_API_TOKEN",
         ],
     ),
     "documents": (
@@ -128,6 +137,21 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "TASK_VRAM_WAIT_S",
             "DEPTH_LEVEL",
             "DEPTH_VERIFY",
+        ],
+    ),
+    "scheduler": (
+        "Scheduler",
+        [
+            "SCHEDULER_ENABLED",
+            "SCHEDULER_MISSED_REMINDER",
+            "SCHEDULER_MISSED_ACTION",
+            "SCHEDULER_CATCHUP_MAX",
+            "SCHEDULER_ACTION_LEAD_MIN",
+            "SCHEDULER_MAX_LATENESS_MIN",
+            "SCHEDULER_ACTION_MIN_MINUTES",
+            "SCHEDULER_RUN_ROUNDS",
+            "SCHEDULER_RUN_TIMEOUT_S",
+            "SCHEDULER_GRACE_MIN",
         ],
     ),
     "mcp": (
@@ -369,6 +393,10 @@ def build_schema(app) -> list[dict]:
                 {
                     "key": key,
                     "kind": _kind_of(value),
+                    # A closed set is a choice, not a spelling test: the panel draws a
+                    # selector for these instead of a text box. The same tuple the
+                    # save-time validator enforces, so the two cannot disagree.
+                    "choices": list(_ENUMS.get(key, ())),
                     "description": DESCRIPTIONS.get(key, ""),
                     "secret": key in SECRET_KEYS,
                     "value": None if key in SECRET_KEYS else value,
@@ -432,6 +460,8 @@ def coerce(key: str, raw: Any, current_kind: str) -> tuple[Any, str | None]:
 
 
 _ENUMS: dict[str, tuple[str, ...]] = {
+    "SCHEDULER_MISSED_REMINDER": ("all", "last", "none"),
+    "SCHEDULER_MISSED_ACTION": ("all", "last", "none"),
     "DEPTH_LEVEL": ("min", "norm", "max"),
     "DEPTH_VERIFY": ("off", "final", "each"),
     "VRAM_CO_RESIDENCY": ("auto", "off"),
@@ -486,6 +516,9 @@ DESCRIPTIONS: dict[str, str] = {
     "CRAWL_PAGE_TIMEOUT_S": "Single page fetch timeout (seconds)",
     "CRAWL_MAX_PAGE_CHARS": "Characters kept per crawled page",
     "CRAWL_MAX_TOTAL_CHARS": "Characters kept across the whole crawl",
+    "NET_TOOLS_ENABLED": "Offer the network diagnostics tools to users who were granted them",
+    "NETDIAG_URL": "Network diagnostics service URL",
+    "NETDIAG_API_TOKEN": "Bearer token for the network diagnostics service",
     "CRAWL_CONCURRENCY": "Parallel crawl requests",
     "RAG_MAX_RESULTS_CHARS": "Characters of document context passed to the model",
     "QDRANT_URL": "Qdrant vector database URL",
@@ -633,6 +666,28 @@ DESCRIPTIONS: dict[str, str] = {
     "MCP_ENABLED": "Offer tools from the configured MCP servers to the chat model (applies immediately)",
     "MCP_TIMEOUT_S": "Timeout for one MCP request (seconds)",
     "MCP_SERVERS": "Configured MCP servers: a JSON array of {name, url, token, allow} (applies immediately)",
+    "SCHEDULER_MISSED_REMINDER": (
+        "A reminder missed while the server was down: all of them, only the last one, or none"
+    ),
+    "SCHEDULER_MISSED_ACTION": (
+        "An action missed while the server was down: all of them, only the last one, or none"
+    ),
+    "SCHEDULER_CATCHUP_MAX": (
+        "The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped"
+    ),
+    "SCHEDULER_ACTION_LEAD_MIN": (
+        "Minutes before its target an action is queued, so its answer is ready on time"
+    ),
+    "SCHEDULER_MAX_LATENESS_MIN": (
+        "Minutes after its target a run that never started is cancelled with a short notice"
+    ),
+    "SCHEDULER_GRACE_MIN": "Minutes late before a firing counts as missed rather than on time",
+    "SCHEDULER_RUN_ROUNDS": "How many model rounds one action may spend before it must answer",
+    "SCHEDULER_RUN_TIMEOUT_S": "Seconds one action may run before it stops; checked before each round",
+    "SCHEDULER_ACTION_MIN_MINUTES": (
+        "The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)"
+    ),
+    "SCHEDULER_ENABLED": "Deliver scheduled reminders and actions at all",
     "DEPTH_LEVEL": "How much work one task request may spend: min, norm or max (applies after a restart)",
     "VRAM_CO_RESIDENCY": "Keep residents that fit next to a new model (auto) or unload everything (off)",
     "VRAM_HEADROOM_MB": "VRAM kept free for prefill buffers when deciding what to unload",

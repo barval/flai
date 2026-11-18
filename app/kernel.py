@@ -31,9 +31,13 @@ KERNEL_INTENTS: tuple[str, ...] = (
     "reasoning_web",
     "remember",
     "crawl",
+    "schedule",
 )
 
 INTENT_ACTIONS: dict[str, str] = {intent: intent for intent in KERNEL_INTENTS}
+# Scheduling is done by the chat loop's own tools, so the intent only has to keep the
+# request away from search, reasoning and the media pipelines.
+INTENT_ACTIONS["schedule"] = "none"
 
 # A small model degrades quickly as the tool list grows; five to eight is the
 # measured cliff, and an empty list is a legitimate answer meaning "no tool".
@@ -348,7 +352,13 @@ def build_kernel_catalog(tool_definitions: list[dict[str, Any]]) -> str:
 
 
 def build_kernel_prompt(
-    message: str, catalog: str, current_time: str, router_context: str, rooms: str = "", skills: str = ""
+    message: str,
+    catalog: str,
+    current_time: str,
+    router_context: str,
+    rooms: str = "",
+    skills: str = "",
+    network_rule: str = "",
 ) -> str:
     """Render the kernel prompt.
 
@@ -371,6 +381,7 @@ def build_kernel_prompt(
             "rooms": rooms,
             "router_context": router_context or "",
             "user_query": message,
+            "network_rule": network_rule,
         },
         lang="en",
     )

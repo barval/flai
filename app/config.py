@@ -11,7 +11,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "13.4"
+APP_VERSION = "13.5"
 
 
 def setting(name: str, default: Any = None) -> Any:
@@ -59,6 +59,18 @@ def graph_auto_extract_enabled(app=None) -> bool:
     if not platform:
         platform = str(setting("FLAI_PLATFORM", "") or "")
     return platform.strip().lower() != "cpu"
+
+
+def resolve_action_floor(platform: str, configured: int) -> int:
+    """The smallest step between two runs of a recurring action.
+
+    Work costs a planning loop and the GPU: five minutes apart on a GPU host, fifteen on a
+    CPU-only one where the same loop would occupy the machine all day. An explicit value
+    wins over the platform.
+    """
+    if configured > 0:
+        return configured
+    return 15 if str(platform or "").strip().lower() == "cpu" else 5
 
 
 def load_config(app):
@@ -246,6 +258,11 @@ def load_config(app):
     app.config["CRAWL_ENABLED"] = os.getenv("CRAWL_ENABLED", "false").lower() in ("true", "1", "yes")
     app.config["CRAWLER_URL"] = os.getenv("CRAWLER_URL", "http://flai-crawler:11235")
     app.config["CRAWL_API_TOKEN"] = os.getenv("CRAWL_API_TOKEN", "")
+
+    # Network diagnostics (optional netdiag sidecar; tools granted per user)
+    app.config["NET_TOOLS_ENABLED"] = os.getenv("NET_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["NETDIAG_URL"] = os.getenv("NETDIAG_URL", "http://flai-netdiag:8099")
+    app.config["NETDIAG_API_TOKEN"] = os.getenv("NETDIAG_API_TOKEN", "")
     app.config["CRAWL_MAX_PAGES"] = int(os.getenv("CRAWL_MAX_PAGES", 50))
     app.config["CRAWL_MAX_DEPTH"] = int(os.getenv("CRAWL_MAX_DEPTH", 3))
     app.config["CRAWL_TIMEOUT_S"] = int(os.getenv("CRAWL_TIMEOUT_S", 300))
@@ -259,6 +276,34 @@ def load_config(app):
     app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
     app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
+    # Scheduler (v13.5): a firing missed while the server was down is governed by the
+    # per-kind policy, and these are read on every tick, so a panel change applies
+    # without a restart.
+    app.config["SCHEDULER_ENABLED"] = os.getenv("SCHEDULER_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["SCHEDULER_MISSED_REMINDER"] = os.getenv("SCHEDULER_MISSED_REMINDER", "last")
+    app.config["SCHEDULER_MISSED_ACTION"] = os.getenv("SCHEDULER_MISSED_ACTION", "last")
+    app.config["SCHEDULER_CATCHUP_MAX"] = int(os.getenv("SCHEDULER_CATCHUP_MAX", "20"))
+    app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
+    # A run takes seconds, so one minute of lead is enough to have the answer ready on time.
+    app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "1"))
+    app.config["SCHEDULER_RUN_ROUNDS"] = int(os.getenv("SCHEDULER_RUN_ROUNDS", "3"))
+    app.config["SCHEDULER_RUN_TIMEOUT_S"] = int(os.getenv("SCHEDULER_RUN_TIMEOUT_S", "180"))
+    app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))
+    # A recurring action is work: five minutes apart on a GPU host, fifteen on a CPU-only
+    # one where the same loop would occupy the machine all day. 0 means "decide from the
+    # hardware"; any positive value wins.
+    platform = str(app.config.get("FLAI_PLATFORM") or "")
+    if not platform:
+        try:
+            from app.platform_detect import get_platform_info
+
+            platform = "cpu" if get_platform_info().accelerator == "none" else "gpu"
+        except Exception:  # noqa: BLE001 - an unknown host is treated as a CPU one
+            platform = "cpu"
+    app.config["SCHEDULER_ACTION_MIN_MINUTES"] = resolve_action_floor(
+        platform, int(os.getenv("SCHEDULER_ACTION_MIN_MINUTES", "0") or 0)
+    )
+
     # The depth axis (app/depth.py) supplies the defaults; an explicit key in the
     # environment still wins, so one number can be tuned without a profile.
     from app.depth import depth_defaults

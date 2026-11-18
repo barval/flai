@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v13.4 — Single-Server Deployment Script
+# FLAI v13.5 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -169,6 +169,24 @@ enable_env_features() {
         enable_env_key CRAWL_ENABLED "Enabling deep web crawl (Crawl4AI) in .env..." true
     else
         disable_env_key CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
+    fi
+    if [[ "$WITH_NET_TOOLS" == "true" ]]; then
+        enable_env_key NET_TOOLS_ENABLED "Enabling network diagnostics (netdiag) in .env..." true
+            # The sidecar fails closed on an empty token: a generated one is what
+            # makes the container usable without a second manual step.
+            if ! grep -qE '^NETDIAG_API_TOKEN=.+' .env 2>/dev/null; then
+                local netdiag_token
+                netdiag_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))' 2>/dev/null \
+                    || openssl rand -hex 24 2>/dev/null || date +%s%N)
+                if grep -qE '^#? ?NETDIAG_API_TOKEN=' .env 2>/dev/null; then
+                    sed -Ei "s|^#? ?NETDIAG_API_TOKEN=.*|NETDIAG_API_TOKEN=${netdiag_token}|" .env
+                else
+                    printf '\nNETDIAG_API_TOKEN=%s\n' "$netdiag_token" >> .env
+                fi
+                info "Generated NETDIAG_API_TOKEN in .env"
+            fi
+    else
+        disable_env_key NET_TOOLS_ENABLED
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
@@ -764,6 +782,7 @@ resolve_stack() {
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
+    [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
 
     # Platform: --platform/--gpu-*, else FLAI_PLATFORM from the environment, else
     # what the host reports.
@@ -932,7 +951,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v13.4 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v13.5 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -948,7 +967,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v13.4 — Deployment Script
+FLAI v13.5 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -963,6 +982,8 @@ Options:
   --with-video        Deploy LTX-Video (fast backend, clips up to 10 s)
   --with-video-wan    Deploy Wan 2.2 TI2V 5B (quality backend, 5 s clips)
                       (mutually exclusive with --with-video; needs a GPU)
+  --with-net-tools    Deploy the network diagnostics sidecar (dig, whois, ping,
+                      mtr, nmap, iperf3); tools are then granted per user in the panel
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
@@ -1015,6 +1036,7 @@ WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
+WITH_NET_TOOLS=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 TWO_MODELS=false
@@ -1034,6 +1056,7 @@ for arg in "$@"; do
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
+        --with-net-tools)                 WITH_NET_TOOLS=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
         --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
         --gpu-amd)                       FLAI_PLATFORM=amd ;;
@@ -1067,7 +1090,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v13.4 — Deployment Script"
+    echo "  FLAI v13.5 — Deployment Script"
     echo "============================================"
     echo ""
 

@@ -122,8 +122,10 @@ def create_task(
         c = conn.cursor()
         c.execute(
             """INSERT INTO tasks (id, user_id, task_class, title, status, step_plan, next_step_index,
-               accumulated_exec_seconds, lang, response_style, doc_ids, deep_analysis, images, created_at, updated_at)
-               VALUES (%s, %s, %s, %s, 'queued', '{}'::jsonb, 0, 0, %s, %s, %s::jsonb, %s, %s::jsonb, NOW(), NOW())""",
+               accumulated_exec_seconds, lang, response_style, doc_ids, deep_analysis, images,
+               created_at, updated_at)
+               VALUES (%s, %s, %s, %s, 'queued', '{}'::jsonb, 0, 0, %s, %s, %s::jsonb, %s, %s::jsonb,
+                       NOW(), NOW())""",
             (
                 task_id,
                 user_id,
@@ -193,6 +195,7 @@ def add_step(
     tool: str = "",
     checkpoint_criteria: str = "",
     parent_step_id: str | None = None,
+    extra: dict | None = None,
 ) -> str:
     """Insert a pending task_steps row; return the generated step id (UUID string)."""
     step_id = str(uuid.uuid4())
@@ -200,8 +203,8 @@ def add_step(
         c = conn.cursor()
         c.execute(
             """INSERT INTO task_steps (id, task_id, seq, parent_step_id, kind, status, goal, tool,
-               checkpoint_criteria, attempts) VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s, %s, 0)""",
-            (step_id, task_id, seq, parent_step_id, kind, goal, tool, checkpoint_criteria),
+               checkpoint_criteria, attempts, extra) VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s, %s, 0, %s)""",
+            (step_id, task_id, seq, parent_step_id, kind, goal, tool, checkpoint_criteria, json.dumps(extra or {})),
         )
     return step_id
 

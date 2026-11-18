@@ -785,3 +785,80 @@ def api_delete_document(doc_id):
     # every other document pointing at it.
     db.delete_document_resources(doc, session["login"])
     return jsonify({"status": "ok"})
+
+
+@bp.route("/documents/<doc_id>/index", methods=["POST"])
+def set_document_indexing(doc_id):
+    """Turn RAG and graph indexing on or off for a document the assistant wrote.
+
+    A generated document is stored unindexed: a log that grows every few minutes would
+    otherwise be re-indexed on every append and fill the graph with entities nobody asked
+    for. The switch belongs only to those documents — an upload is indexed on arrival and
+    has no box to untick.
+    """
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authenticated")}), 401
+    doc = db.get_document(doc_id, login)
+    if not doc:
+        return jsonify({"error": "⚠️ " + _("Document not found")}), 404
+    if doc.get("source") != "generated":
+        return jsonify({"error": "⚠️ " + _("Only a document written by the assistant has this switch")}), 400
+
+    enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
+
+    if enabled:
+        db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
+        file_path = os.path.join(current_app.config["DOCUMENTS_FOLDER"], doc["file_path"])
+        current_app.request_queue.add_request(
+            user_id=login,
+            session_id="",
+            request_data={"type": "index_document", "doc_id": doc_id, "file_path": file_path},
+            user_class=session.get("user_class", 100),
+            lang=session.get("language", "ru"),
+        )
+    else:
+        rag = current_app.modules.get("rag")
+        if rag and rag.available:
+            try:
+                rag.delete_document(doc_id, login)
+            except Exception as exc:  # noqa: BLE001 - the graph cleanup still runs
+                current_app.logger.error(f"Failed to delete document from index: {exc}")
+        db.delete_kg_document(doc_id, login)
+        db.update_document_index_status(doc_id, db.INDEX_STATUS_NOT_INDEXED)
+
+    return jsonify({"ok": True, "index_status": db.get_document(doc_id, login)["index_status"]})
+
+
+@bp.route("/documents/check-name", methods=["POST"])
+def check_upload_name():
+    """Whether a chosen upload name collides with a document the assistant wrote.
+
+    Names are first come, first served: a name an upload already holds is refused by the
+    writer, and a name the assistant already holds is offered to the uploader as a
+    rename — silently appending " (2)" would hide the conflict from the person who
+    chose the name.
+    """
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authenticated")}), 401
+    wanted = str((request.get_json(silent=True) or {}).get("filename") or "").strip()
+    if not wanted:
+        return jsonify({"ok": True})
+
+    generated = {doc["filename"] for doc in db.get_user_documents(login) if doc.get("source") == "generated"}
+    if wanted not in generated:
+        return jsonify({"ok": True})
+
+    stem, suffix = os.path.splitext(wanted)
+    suggestion = f"{stem} (2){suffix}"
+    return (
+        jsonify(
+            {
+                "error": "⚠️ " + _("The assistant already wrote a document with this name"),
+                "code": "name_taken_by_generated",
+                "suggested": suggestion,
+            }
+        ),
+        409,
+    )

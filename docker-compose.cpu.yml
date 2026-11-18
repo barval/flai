@@ -44,8 +44,12 @@ services:
       # The CPU video planner runs in the web process, so the cap it must
       # respect has to be visible here (it mirrors the sd container limit).
       - WAN_VIDEO_RAM_LIMIT_MB=16384
+      - NET_TOOLS_ENABLED=${NET_TOOLS_ENABLED:-false}
+      - NETDIAG_URL=http://flai-netdiag:8099
+      - NETDIAG_API_TOKEN=${NETDIAG_API_TOKEN:-}
     networks:
       - flai_network
+      - netdiag_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -494,9 +498,40 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # Network diagnostics (dig, whois, ping, mtr, nmap, iperf3). Architecture
+  # independent, so a CPU host can run it; its own network keeps PostgreSQL and
+  # Redis out of its reach.
+  netdiag:
+    build:
+      context: ./services/netdiag
+    image: flai_netdiag:latest
+    container_name: flai-netdiag
+    profiles: ["with-net-tools"]
+    networks: [netdiag_network]
+    environment:
+      - NETDIAG_API_TOKEN=${NETDIAG_API_TOKEN:-}
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1g
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
 networks:
   flai_network:
     name: flai_network
+    driver: bridge
+  netdiag_network:
+    name: flai_netdiag_network
     driver: bridge
 
 volumes:

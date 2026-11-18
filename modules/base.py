@@ -138,13 +138,22 @@ _NETWORK_RULES = {
 
 _KERNEL_NETWORK_RULES = {
     "ru": (
-        "- Вопрос о сети — это none, не search: используй подходящий инструмент net_* (см. # TOOLS).\n"
-        "  «Кто владелец домена» — это net_whois + none, не search: поиск отдаёт списки регистраторов, "
-        "а не владельца."
+        "- Вопрос о сети — и просьба её ИЗМЕРИТЬ или ПРОВЕРИТЬ — это none: используй подходящий инструмент "
+        "net_* (см. # TOOLS).\n"
+        "  «Измерь скорость до …», «запусти iperf3 …», «проверь пинг …», «отвечает ли узел …», "
+        "«какие порты открыты …», «кто владелец домена …» — это none плюс инструмент "
+        "(net_speed, net_ping, net_whois, net_ports, net_dns).\n"
+        "  Поисковик ничего не измеряет: он отдаёт статьи о том, как проверять, поэтому search здесь "
+        "всегда ошибка."
     ),
     "en": (
-        "- A question about a network is none, never search: use the net_* tool that matches it (see # TOOLS).\n"
-        "  'Who owns <domain>' is net_whois + none, never search: search returns registrar lists, not the owner."
+        "- A question about a network — and a request to MEASURE or CHECK one — is none: use the net_* tool "
+        "that answers it (see # TOOLS).\n"
+        "  'Measure the speed to ...', 'run iperf3 ...', 'check the ping ...', 'is the host up ...', "
+        "'which ports are open ...', 'who owns <domain>' are none plus the matching tool "
+        "(net_speed, net_ping, net_whois, net_ports, net_dns).\n"
+        "  A search engine measures nothing: it returns articles about how to check, so search is always "
+        "wrong here."
     ),
 }
 
@@ -1085,6 +1094,7 @@ class BaseModule(TranslationMixin):
             "[-CAMERA-]": "camera",
             "[-REASONING-WEB-]": "reasoning_web",
             "[-CRAWL-]": "crawl",
+            "[-NET-]": "net",
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
             "[-SEARCH-]": "search",
@@ -1096,6 +1106,17 @@ class BaseModule(TranslationMixin):
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
+                if action == "net":
+                    # A network check is ordinary chat with tools. The whole request has
+                    # to survive: the chat model chooses the tool from the user's words,
+                    # and "prits.ru" alone says nothing about measuring anything.
+                    return {
+                        "action": "none",
+                        "query": original_query,
+                        "needs_reasoning": False,
+                        "tools": None,
+                        "memory": None,
+                    }
                 if action in ("image", "video"):
                     # Image/video: text after marker is unreliable (copied from history).
                     # Use the original user query instead.

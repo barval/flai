@@ -86,6 +86,12 @@ This is MULTI-PAGE reading (minutes), not a single-fact lookup.
 Do NOT include: ordinary fact search (category 6), complex question with fresh data (category 10), or opening one specific link (that is ordinary chat — the read_page tool).
 Link in the message: the message contains ONE link and asks about its CONTENT ('what is this project <URL>', 'what does this page say') → answer WITHOUT a marker — ordinary chat will open the page with the read_page tool. Do NOT route such messages to [-SEARCH-]: search cannot open addresses.
 
+## 12. NETWORK — [-NET-] and the target
+A request to MEASURE or CHECK a network: "measure the speed to ...", "run iperf3 ...", "check the ping to ...", "which ports are open on ...", "who owns a domain ...", "what does a name resolve to ...", "what certificate does a site have ...", "is the host up ...".
+After the marker — the target exactly as the user wrote it.
+NOT 6: a search engine returns articles about how to check and no measurement.
+NOT 8: reasoning cannot measure anything.
+
 # INPUT DATA
 
 {camera_section}

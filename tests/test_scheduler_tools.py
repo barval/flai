@@ -193,8 +193,8 @@ def test_both_prompts_name_the_intent(env, lang):
     assert "[-SCHEDULE-]" in marker
 
 
-def test_a_queued_task_is_cancelled_when_its_item_is_deleted(env, client):
-    from app.tasks import store
+def test_a_queued_run_is_cancelled_when_its_item_is_deleted(env, client):
+    from app import scheduler_runs
 
     with client.session_transaction() as browser_session:
         browser_session["login"] = LOGIN
@@ -205,17 +205,14 @@ def test_a_queued_task_is_cancelled_when_its_item_is_deleted(env, client):
         LOGIN, kind="action", title="Rooms", body="Check", repeat="once", at=datetime.now(UTC) + timedelta(hours=1),
         timezone_name=ZONE,
     )
-    task_id = store.create_task(
-        LOGIN, 5, "Rooms", "ru", "neutral", scheduler_item_id=item_id, scheduler_deliver_at=datetime.now(UTC)
-    )
+    run_id = scheduler_runs.create_run(item_id, LOGIN, datetime.now(UTC))
 
     response = client.post(f"/api/scheduler/items/{item_id}/delete")
 
     assert response.status_code == 200
     assert scheduler_store.get_item(item_id) is None
-    task = store.get_task(task_id)
-    assert task["status"] == "cancelled"
-    assert task["scheduler_delivered_at"] is not None
+    # The run row goes with its item (the foreign key cascades), so nothing can be delivered.
+    assert scheduler_runs.get_run(run_id) is None
 
 
 def test_the_list_is_owner_scoped(env, client):

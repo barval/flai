@@ -187,7 +187,7 @@ def test_a_missed_action_can_be_skipped_entirely(env):
 
     with db.get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT count(*) AS n FROM tasks WHERE scheduler_item_id = %s", (item_id,))
+        c.execute("SELECT count(*) AS n FROM scheduler_runs WHERE item_id = %s", (item_id,))
         assert c.fetchone()["n"] == 0
     assert scheduler_store.get_item(item_id)["next_run_at"] > NOW
 

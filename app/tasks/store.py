@@ -35,9 +35,6 @@ _TASK_FIELDS = {
     "completed_at",
     "abort_reason",
     "lang",
-    "scheduler_item_id",
-    "scheduler_deliver_at",
-    "scheduler_delivered_at",
 }
 _STEP_FIELDS = {
     "status",
@@ -58,7 +55,7 @@ _STEP_FIELDS = {
     "extra",
 }
 _JSONB_FIELDS = {"step_plan", "extra", "doc_ids", "images", "audio", "visual_bible"}
-_TIMESTAMPTZ_FIELDS = {"started_at", "finished_at", "completed_at", "scheduler_deliver_at", "scheduler_delivered_at"}
+_TIMESTAMPTZ_FIELDS = {"started_at", "finished_at", "completed_at"}
 
 
 def _cast_for(field: str) -> str:
@@ -107,8 +104,6 @@ def create_task(
     doc_ids: list[str] | None = None,
     deep_analysis: bool = False,
     images: list[dict[str, str]] | None = None,
-    scheduler_item_id: str | None = None,
-    scheduler_deliver_at: Any = None,
 ) -> str:
     """Insert a queued task row; return the generated task id (UUID string).
 
@@ -128,9 +123,9 @@ def create_task(
         c.execute(
             """INSERT INTO tasks (id, user_id, task_class, title, status, step_plan, next_step_index,
                accumulated_exec_seconds, lang, response_style, doc_ids, deep_analysis, images,
-               scheduler_item_id, scheduler_deliver_at, created_at, updated_at)
+               created_at, updated_at)
                VALUES (%s, %s, %s, %s, 'queued', '{}'::jsonb, 0, 0, %s, %s, %s::jsonb, %s, %s::jsonb,
-                       %s, %s::timestamptz, NOW(), NOW())""",
+                       NOW(), NOW())""",
             (
                 task_id,
                 user_id,
@@ -141,8 +136,6 @@ def create_task(
                 _prepare_value("doc_ids", doc_ids or []),
                 bool(deep_analysis),
                 _prepare_value("images", images or []),
-                scheduler_item_id,
-                scheduler_deliver_at,
             ),
         )
     return task_id
@@ -273,100 +266,3 @@ def move_extra_steps_after(task_id: str, seq: int, base: int) -> int:
             (int(base), task_id, int(seq)),
         )
         return int(c.rowcount or 0)
-
-
-# ── Scheduled actions (v13.5) ─────────────────────────────────────────────────
-#
-# An action is an ordinary task that knows three extra things: which scheduled item
-# started it, when its result is due, and whether that result has been delivered.
-# Delivery is polled, not pushed, so every ending the engine has — completed, failed,
-# expired, cancelled — is covered by one query instead of a hook on each path.
-
-ACTIVE_SCHEDULER_STATUSES = ("queued", "active", "frozen", "awaiting_user")
-TERMINAL_SCHEDULER_STATUSES = ("completed", "failed", "expired", "cancelled")
-
-
-def active_scheduler_task(item_id: str) -> dict | None:
-    """The item's task that is still owed a result, or None.
-
-    ``frozen`` counts: it is the normal state while the user chats, and counting only
-    ``active`` would pile a task on every firing during a long conversation.
-    ``awaiting_user`` counts too — a task waiting for an answer is not finished, and a
-    second one would ask the same question twice.
-    """
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM tasks WHERE scheduler_item_id = %s AND status = ANY(%s)"
-            " ORDER BY created_at DESC LIMIT 1",
-            (item_id, list(ACTIVE_SCHEDULER_STATUSES)),
-        )
-        row = c.fetchone()
-        return dict(row) if row else None
-
-
-def scheduler_tasks_for_item(item_id: str) -> list[dict]:
-    """Every task an item has ever started, newest first."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM tasks WHERE scheduler_item_id = %s ORDER BY created_at DESC",
-            (item_id,),
-        )
-        return [dict(row) for row in c.fetchall()]
-
-
-def due_scheduler_tasks(moment) -> list[dict]:
-    """Terminal tasks whose result is due and has not gone out yet."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM tasks WHERE scheduler_item_id IS NOT NULL"
-            " AND scheduler_delivered_at IS NULL"
-            " AND status = ANY(%s)"
-            " AND scheduler_deliver_at IS NOT NULL AND scheduler_deliver_at <= %s"
-            " ORDER BY scheduler_deliver_at ASC LIMIT 50",
-            (list(TERMINAL_SCHEDULER_STATUSES), moment),
-        )
-        return [dict(row) for row in c.fetchall()]
-
-
-def overdue_scheduler_tasks(moment, max_lateness_minutes: int) -> list[dict]:
-    """Queued tasks that are past their due time by more than the allowed lateness.
-
-    A task that never started must not hold the single task slot all day; the caller
-    cancels these through the ordinary cancel flag.
-    """
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM tasks WHERE scheduler_item_id IS NOT NULL"
-            " AND scheduler_delivered_at IS NULL"
-            " AND status = ANY(%s)"
-            " AND scheduler_deliver_at IS NOT NULL"
-            " AND scheduler_deliver_at < %s - make_interval(mins => %s)",
-            (list(ACTIVE_SCHEDULER_STATUSES), moment, int(max_lateness_minutes)),
-        )
-        return [dict(row) for row in c.fetchall()]
-
-
-def mark_scheduler_delivered(task_id: str, moment) -> None:
-    """Record that the result went out, so the next tick does not repeat it."""
-    with get_db() as conn:
-        conn.cursor().execute(
-            "UPDATE tasks SET scheduler_delivered_at = %s, updated_at = NOW() WHERE id = %s",
-            (moment, task_id),
-        )
-
-
-def task_result_text(task_id: str) -> str:
-    """The task's closing ``final`` step, which is where every ending writes its text."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT result FROM task_steps WHERE task_id = %s AND kind = 'final'"
-            " ORDER BY seq DESC LIMIT 1",
-            (task_id,),
-        )
-        row = c.fetchone()
-    return str((row or {}).get("result") or "").strip()

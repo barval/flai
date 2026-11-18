@@ -97,6 +97,32 @@ A reasoning mode for serious work across multiple documents: comparing contracts
 
 Up to **4 images** plus one document, or up to **4 audio items** — one voice recording and several audio files (1 voice + 3 files, or 4 files; voice + one image is also allowed). Images attach as thumbnails (no taller than the Send button), documents/audio/voice as emoji chips. A chat-attached document is saved to your Documents and indexed through the normal RAG pipeline, so the model answers questions about it; scanned PDFs are OCR-recognized with a 30-minute budget per document (`OCR_TIME_BUDGET_S`). Every audio item is transcribed in order and the transcripts, together with your typed text, form the question — an audio message is always answered. Limits: image 5 MB, audio 4 MB (voice 5 MB), document 25 MB, audio items per message 4 (`MAX_CHAT_AUDIO`), request body 75 MB.
 
+### How do I schedule a reminder or an action?
+
+Ask in plain language — there is no form:
+
+- **Reminder** (a sentence you get later, no model work): "remind me tomorrow at nine about
+  the report", "in fifteen minutes remind me about the oven", "every Friday at 16:00 remind me
+  to send the timesheet".
+- **Action** (real work, using every tool and skill you have): "every morning at eight, check
+  the news and save a summary to a file", "on the 1st of each month, collect the invoices from
+  my documents and write a report".
+
+Answer with the concrete time — "🔔 Reminder set for 18 November, 09:00" — and check it: that
+reply is your only chance to notice a misunderstanding before it fires. Reminders arrive in the
+chat **🔔 Scheduler: reminders** and also pop up on screen; actions arrive in
+**⚙️ Scheduler: actions** as messages, and a result that finished early waits for its time.
+Delete or inspect everything in **your profile popup → Scheduled**; deleting an item also stops
+what it already started.
+
+Recurrence is a closed set: once, every N minutes (at least 15), daily, weekly and monthly — on
+the installation's own clock, so nine stays nine across a daylight-saving change. A firing you
+missed while the server was down follows **Admin → Settings → Scheduler** (`all`, `last` or
+`none`, separately for reminders and actions). An action refuses to start while its previous run
+is still queued or running, and a task that could not start within the lateness limit is
+cancelled with a short notice instead of being delivered a day late.
+See [SCHEDULER.md](SCHEDULER.md).
+
 ### Can I stop a running task?
 
 Yes — press **Cancel**. Cancellation is supported for image generation and editing, video generation (which also restarts the video container), and streaming chat tasks.

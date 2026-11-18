@@ -37,6 +37,14 @@ header {
     z-index: 1000;
     width: 520px;
     max-width: calc(100vw - 32px);
+    /* The panel sits at top: 52px inside an absolutely positioned header, so it adds
+       nothing to the document height: without a ceiling the lower half of a long list
+       (many scheduled items, many API keys) is simply unreachable. It scrolls itself,
+       and the dynamic viewport unit keeps that true under a mobile browser's chrome. */
+    max-height: calc(100vh - 70px);
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     color: #2c3e50;
     background: #fff;
@@ -153,6 +161,8 @@ header {
 }
 .api-keys-header span { color: #2c3e50; }
 @media (max-width: 600px) {
+    /* Narrow screens keep the horizontal scroll the keys table needs; the panel's own
+       vertical scroll comes from the base rule above, so the list never leaves the screen. */
     .api-keys-panel { left: 16px; overflow-x: auto; }
     .api-keys-table { min-width: 480px; }
 }

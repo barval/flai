@@ -87,3 +87,14 @@ def test_a_scheduler_chat_keeps_its_own_mark():
     assert "Extended_Pictographic" in sessions
     assert "sessionTitleMark(s.title)" in sessions
     assert "s.title[:1] in ('🔔', '⚙️')" in template
+
+
+def test_the_popup_scrolls_instead_of_leaving_the_screen():
+    """Many scheduled items must not push the lower half of the panel out of reach."""
+    css = _read("app/static/css/header-footer.css")
+
+    assert "max-height: calc(100dvh - 70px)" in css
+    assert "overflow-y: auto" in css
+    assert "overscroll-behavior: contain" in css
+    # The list itself scrolls first; the panel is the second line of defence.
+    assert "max-height: 220px" in css

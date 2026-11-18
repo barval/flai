@@ -338,7 +338,7 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 |---|---|---|---|
 | **Core** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time |
 | **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded |
-| **Kokoro TTS** (`with-voice-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
+| **Kokoro TTS** (`with-tts-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | the TTS backend alone; `with-voice-kokoro` adds the ASR container. +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
 | **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; the planner budgets `WHISPER_RAM_MB` |
 | **Image generation** (`with-image-gen`) | ~1.5 GB | up to ~10 GB | sd.cpp, Z-Image Turbo Q8; SD and video never overlap |
 | **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |

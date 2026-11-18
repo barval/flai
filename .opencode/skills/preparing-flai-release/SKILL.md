@@ -30,6 +30,12 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_release_strings.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_schema_changes.py --base "$PREV"
+python3 .opencode/skills/preparing-flai-release/scripts/list_release_tests.py --base "$PREV"
 ```
 
 `check_dead_paths.py` reads every backticked path in `AGENTS.md` and `docs/*.md`
@@ -40,6 +46,37 @@ reads prose. Measured: the architecture summary still described
 `check_doc_claims.py` resolves three kinds of claim mechanically: a `flask <command>`
 that no longer exists, an environment key named in backticks that nothing outside
 the documentation mentions, and a `with-…` compose profile no compose file defines.
+
+`check_skill_claims.py` applies the same idea to `.opencode/skills/*/SKILL.md` — the
+instructions an agent follows. It reports a path, a `flask` command, a compose profile or
+an environment key a skill names that the repository no longer has, and it checks each
+skill's inventory: every script in its `scripts/` directory must be named in its
+`SKILL.md`, so a helper cannot be added and then forgotten by the procedure that runs it.
+
+`check_compose_profiles.py` closes the direction `check_doc_claims.py` leaves open: a
+profile that exists and is documented nowhere. Measured — `with-tts-kokoro` started a
+container and was named in no README, no `AGENTS.md` and no `docs/` page.
+
+`check_env_parity.py` compares the keys `app/config.py` reads with `.env.example`,
+excluding panel settings (they live in the database, so the template correctly omits
+them). The `.env`/`.env.example` diff below catches a key added to a deployment but not
+to the template; this catches the opposite — a key added to the code and forgotten.
+
+`check_release_strings.py` reads the seven places the version is stamped — `APP_VERSION`,
+`pyproject.toml`, the `AGENTS.md` title, both README What's New headers, both
+`Project-Id-Version` lines, the `CHANGELOG.md` heading — and reports every disagreement,
+plus `Unreleased` left in a release README.
+
+`check_schema_changes.py` reads the release diff of `app/database.py`. `init_db()` runs on
+every start, so a `DROP COLUMN` there is not a one-time migration: it deletes data the
+moment the new code boots, and no test sees it because the tests build their own schema.
+Every destructive or narrowing statement must be named in a `### Migration` section of
+`CHANGELOG.md`; the script prints the backup-and-inspect commands for the rest.
+
+`list_release_tests.py` names the test files the release must run, from the diff: changed
+tests, tests whose name matches a changed module, and tests importing a changed module
+that is not imported by the whole suite. It never runs them — one file at a time, with the
+test database exported in the same command.
 
 The branch, translation, catalog-drift, API, TOC, secrets, dead-path and doc-claim scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
@@ -92,10 +129,14 @@ Record: branch, commits, merged status, owner, conflicts. The release range is `
 
 ```bash
 ruff check .
-python -m compileall -q app modules
+python3.11 -m compileall -q app modules   # the image is python:3.11-slim; the venv is newer
 mypy app/ modules/        # advisory; CI runs it with `|| true`
 git diff --check
 ```
+
+The container runs Python 3.11 and the development venv is newer, so `python -m compileall`
+tests the wrong language version. A module using a 3.12 API passes every local gate and
+fails at the first import on a real installation.
 
 ### English-only scan
 
@@ -199,6 +240,29 @@ git status --short translations
 - Never replace a catalog block with a text splice: a hand-written `msgid`/`msgstr` pair drops the blank line before it, leaving two entries glued together, and leaves the old `msgstr` behind. Let `pybabel update` write the entry, or re-run the drift check immediately after a manual edit.
 - `.po` and `.mo` are committed.
 
+### Schema changes and migrations
+
+`app/database.py:init_db()` is not a migration runner: it re-runs its statements on every
+start, on every installation. That makes three things true at once, and only the first is
+checked by a test:
+
+```bash
+python3 .opencode/skills/preparing-flai-release/scripts/check_schema_changes.py --base "$PREV"
+```
+
+- **A destructive statement is permanent.** `DROP COLUMN` removes the data on the first
+  boot of the new version. The script names every `DROP`, `TRUNCATE`, `RENAME`,
+  `ALTER COLUMN … TYPE` and `NOT NULL` addition in the release diff, and fails until each
+  one is named in `### Migration` of `CHANGELOG.md`.
+- **The data must be inspected before it is dropped.** Take the backup (rule 5), restore it
+  into a scratch database and count the affected rows; the script prints the commands. A
+  column is not "probably unused" because the new code stopped reading it.
+- **It must be idempotent.** Start the application twice against that copy. A migration
+  that only works on the first run fails in front of the user on the second.
+
+`tests/test_demo_pages.py` and the other guards cannot see any of this: the test suite
+builds its own schema from scratch.
+
 ### Secrets and real data in published artefacts
 
 A release publishes everything that is committed: demo pages and snapshots are downloadable by
@@ -245,12 +309,20 @@ grep -rnE 'pdb\.set_trace|debugger;|console\.log' app modules app/static/js
 ### Tests
 
 ```bash
+python3 .opencode/skills/preparing-flai-release/scripts/list_release_tests.py --base "$PREV"
 pytest tests/test_app_version.py tests/test_api_docs.py \
   tests/test_api_inventory.py tests/test_js_signatures.py \
   tests/test_translations.py
 ```
 
+The five files above are the release's own guards. The rest of the set is the code this
+release changed: `list_release_tests.py` prints it, and the workflow runs it one file at a
+time. This is not optional — two tests had been red since v13.5 and no gate ever ran them,
+because the short list was written when the project was smaller.
+
 - Add the test files for changed areas.
+- Run the printed list before the gate, one file per command. A file that fails is fixed
+  (or reported as a pre-existing failure with the commit that broke it), never skipped.
 - The full suite is a CI/merge-gate decision. Locally run only the narrow set; state what was not run.
 
 ### API docs
@@ -380,12 +452,13 @@ Verify:
 
 ```bash
 pytest tests/test_app_version.py
-grep -n '^version' pyproject.toml
-grep -n 'APP_VERSION' app/config.py
-grep -n 'FLAI v' AGENTS.md | head
-grep -n "What's New in" README.md README-ru.md
-grep -n 'Project-Id-Version' translations/*/LC_MESSAGES/messages.po
+python3 .opencode/skills/preparing-flai-release/scripts/check_release_strings.py --released
 ```
+
+`check_release_strings.py` reads all seven stamping points and reports each disagreement,
+so the grep chain it replaces cannot be half-remembered. Without `--released` it accepts an
+`Unreleased` CHANGELOG heading (the state while the release is being prepared); with it, a
+real date is required and `Unreleased` anywhere in a README is a finding.
 
 Documentation heading parity and README links:
 
@@ -430,6 +503,9 @@ release is a separate question, and no test answers it:
   profiles in `AGENTS.md` and the READMEs name it;
 - `docker compose -f <file> config` exits `0` for each compose entry a script
   names. It costs nothing and catches the broken merge before a user does;
+- every profile a compose file defines is named in a user-facing document, and every
+  profile a document names exists:
+  `python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py`;
 - an update must leave the install command's stack running: compare
   `docker compose -f <file> ps --services` with the profiles that command names. A
   service missing from that list means `.env` advertises search, memory or voice that
@@ -470,7 +546,13 @@ include them; a plain `^KEY=` grep reports every optional key as missing:
 ```bash
 diff -u <(grep -oE '^#? *[A-Z0-9_]+=' .env.example | sed -E 's/^#? *//' | sort -u) \
          <(grep -oE '^[A-Z0-9_]+=' .env | sort -u)
+python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
 ```
+
+The diff compares a deployment with the template. The script compares the **code** with the
+template: a key `app/config.py` reads that `.env.example` does not document is a setting a
+fresh installation cannot find, and one the panel does not own either. Keys that are panel
+settings are excluded — they live in the database, not in the file.
 
 ## Phase 4 — README "What's New"
 
@@ -562,6 +644,13 @@ Check and record evidence:
 | API docs (paths) | `tests/test_api_docs.py` | PASS / FAIL |
 | API contract (methods) | `tests/test_api_inventory.py` | PASS / FAIL |
 | API prose, spec structure, served spec | `check_api_docs.py` (with `--live` when the instance runs) | PASS / FAIL |
+| Schema changes documented and inspected | `check_schema_changes.py`, backup + row count + second start | PASS / FAIL |
+| Release tests run | `list_release_tests.py`, one file per command | PASS / NOT VERIFIED |
+| Skills resolve against the repository | `check_skill_claims.py` | PASS / FAIL |
+| Compose profiles documented both ways | `check_compose_profiles.py` | PASS / FAIL |
+| Code/environment parity | `check_env_parity.py` | PASS / FAIL |
+| Release strings agree | `check_release_strings.py --released` | PASS / FAIL |
+| Tools compile on the image's Python | `python3.11 -m compileall -q app modules` | PASS / FAIL |
 | Tree clean | `git status --short`, `git diff --check` | PASS / FAIL |
 
 Final report:
@@ -602,3 +691,9 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "The default changed, so installations get it." | Their `.env` keeps the old value and beats the code fallback; write the migration note and the What's New bullet. |
 | "The docs read correctly, so they are current." | Paths and names drift silently — `memory_extract.template` and `TOOL_LABELS` both stayed documented after the code moved on. Run both scripts, then read. |
 | "The README says it, so it is the product truth." | The README is a document like any other. When it contradicts `docs/` or the code, the code wins and both documents are fixed together. |
+| "`init_db()` is just an `ALTER`; the tests will catch it." | The tests build their own schema from scratch. A `DROP COLUMN` in `init_db()` deletes real data on the first boot, and only a restored backup shows how much. Run `check_schema_changes.py`. |
+| "The gate runs five test files, so the changed code is covered." | That list was written when the project was smaller. Two tests were red for a whole release because no gate ran them. `list_release_tests.py` names the set from the diff. |
+| "It compiles locally, so the image will start." | The image is `python:3.11-slim` and the venv is newer. Compile with `python3.11`. |
+| "The profile is in the compose file, so it is documented." | The reverse check had no guard: `with-tts-kokoro` started a container and appeared in no document. Run `check_compose_profiles.py`. |
+| "A skill is prose; it cannot rot." | A skill is instructions an agent obeys. A renamed flag in `SKILL.md` makes the agent run a command that does not exist. Run `check_skill_claims.py`. |
+| "The version strings were grepped, so they agree." | Seven places, one grep chain, no assertions. `check_release_strings.py` reads all seven. |

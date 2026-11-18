@@ -342,7 +342,7 @@ Qwen3.6/Qwen3.8, gemma-4 и сборку Qwen3-VL, в chat-шаблоне кот
 |---|---|---|---|
 | **Ядро** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, простаивающий llama-swap) | ~2,5 ГБ | — | одновременно резидентна одна модель llama.cpp |
 | **Piper TTS** (`with-voice-piper`) | **~0,5 ГБ** | — | измерено со всеми четырьмя голосами |
-| **Kokoro TTS** (`with-voice-kokoro`) | **1,6 ГБ в покое / ~4,5 ГБ прогретый** | — | +3,1 ГБ — это RU-воркер G2P, освобождается через `KOKORO_G2P_IDLE_TIMEOUT` (300 с) |
+| **Kokoro TTS** (`with-tts-kokoro`) | **1,6 ГБ в покое / ~4,5 ГБ прогретый** | — | только TTS-бэкенд; `with-voice-kokoro` добавляет контейнер ASR. +3,1 ГБ — это RU-воркер G2P, освобождается через `KOKORO_G2P_IDLE_TIMEOUT` (300 с) |
 | **Whisper ASR** (`with-voice-*`) | ~2 ГБ | — | `large-v3-turbo`, CPU; планировщик резервирует `WHISPER_RAM_MB` |
 | **Генерация изображений** (`with-image-gen`) | ~1,5 ГБ | до ~10 ГБ | sd.cpp, Z-Image Turbo Q8; SD и видео никогда не пересекаются |
 | **LTX-Video** (`with-video`) | ~1 ГБ резидентно | **пик 3,1 ГБ** | измеренный пик конвейера, а не прежняя константа 8 ГБ |

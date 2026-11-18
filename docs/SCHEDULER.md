@@ -92,29 +92,47 @@ a per-kind policy decides what the person hears:
 `all` is bounded by `SCHEDULER_CATCHUP_MAX` (default 20): an every-fifteen-minutes item
 after a week of downtime is 672 firings, and past the cap the item behaves as `last` and
 says how many it stands for. An action always catches up **once**: four copies of the same
-work is a pile behind one GPU, not four results.
+work is a pile behind one GPU, not four results. A catch-up run is queued for a moment that
+has already passed, so if the GPU is busy past `SCHEDULER_MAX_LATENESS_MIN` it is delivered as
+"⚠️ The action could not run in time" rather than as an answer to yesterday's question; the
+item still moves to its next future firing.
 
-## An action is a task
+## An action is a run, never a task
 
-A firing puts one task on the Tasks engine — class 3/4/5 from the user's service class
-0/1/2 — with the item it belongs to and the moment its result is due.
+A firing puts one **run** in its own table (`scheduler_runs`), not a task on the Tasks engine.
+A run is a short service loop, so it cannot appear in the Tasks tab — by construction rather
+than by a filter a later query could forget — and it costs a few model calls instead of a
+whole plan.
 
-- **Enqueued ahead by `SCHEDULER_ACTION_LEAD_MIN`** (default 10): the task has to queue, wait
-  for the GPU and run, so starting it exactly on the minute would deliver everything late by
-  design. The lead is a constant, not a prediction of the queue.
-- **Overlap is refused, not queued.** While the previous run is queued, active, frozen (the
-  normal state while the user chats) or waiting for an answer, the new firing counts as
-  skipped. A task waiting for an answer is not finished, and a second one would ask the
-  same question twice.
-- **The result waits for its time.** A task finished early stays visible in the Tasks tab
-  and is delivered at its target; one finished late says so — "Finished at 12:14 instead of
-12:00".
-- **Anything that never started is cancelled** after `SCHEDULER_MAX_LATENESS_MIN` (default
-  60) through the ordinary cancel flag, and delivers "⚠️ The action could not run in time".
-  Stale work must not hold the single task slot for a day.
+- **Queued one minute ahead** (`SCHEDULER_ACTION_LEAD_MIN`, default 1): a run takes seconds,
+  so the answer is ready at the target instead of arriving late by design.
+- **Overlap is refused, not queued.** While the previous run of the same item is queued or
+  running, the new firing is skipped; a pile behind one GPU is not a schedule.
+- **The answer waits for its time.** A run finished early is delivered at its target; one
+  finished late says so — "Finished at 12:14 instead of 12:00".
+- **A run that never started is cancelled** after `SCHEDULER_MAX_LATENESS_MIN` (default 60)
+  and delivers "⚠️ The action could not run in time", so yesterday's rate is never read today.
+- **Chat outranks a run but does not cancel it.** Chat takes the queue ahead of it; a run
+  already executing finishes its few seconds. Only deleting the item cancels a run.
+- **A restart cannot wedge an item.** Every run left `running` is cancelled at startup, and
+  the overlap rule does not keep reading it.
 
-Delivery is **polled, not pushed**: one query covers every ending the engine has —
-completed, failed, expired, cancelled — instead of a hook on each path.
+### When the work is larger than a run
+
+A run carries `start_task(goal, title)`. When the goal says to start a task, the model calls
+it — there is no phrase matching in code — and the server creates an ordinary task titled
+`🛠️ Scheduler: <title>` at the user's class. That task appears in the Tasks tab like any
+other, its result stays there, and the run's own message is the tool's confirmation
+("🛠️ Room snapshots — the task is started and its result will appear in Tasks"), verbatim.
+One run launches at most one task.
+
+A run does **not** get the skill loader or the scheduling tools: a schedule must not create
+schedules, and there is no turn in which a loaded skill body would be read. Everything else
+from the chat catalogue is available, including writing a document.
+
+How a run ends is polled: one query returns the finished runs whose time has come, and the
+tick delivers them. A run's `error` is what the person sees only through the delivered
+message; the details stay in the row.
 
 ## The list
 
@@ -135,8 +153,10 @@ message from a schedule the user removed is what they would report as a bug.
 | `SCHEDULER_MISSED_REMINDER` | all / last / none for reminders | `last` |
 | `SCHEDULER_MISSED_ACTION` | all / last / none for actions | `last` |
 | `SCHEDULER_CATCHUP_MAX` | the most firings one catch-up delivers | `20` |
-| `SCHEDULER_ACTION_LEAD_MIN` | minutes before its target an action is enqueued | `10` |
-| `SCHEDULER_MAX_LATENESS_MIN` | minutes after its target a task that never started is cancelled | `60` |
+| `SCHEDULER_ACTION_LEAD_MIN` | minutes before its target a run is queued | `1` |
+| `SCHEDULER_RUN_ROUNDS` | model rounds one run may spend | `3` |
+| `SCHEDULER_RUN_TIMEOUT_S` | seconds one run may take; checked before each round | `180` |
+| `SCHEDULER_MAX_LATENESS_MIN` | minutes after its target a run that never started is cancelled | `60` |
 | `SCHEDULER_GRACE_MIN` | minutes late before a firing counts as missed | `2` |
 
 The two policies are enum-validated: a typo cannot silently become "no reminders at all".

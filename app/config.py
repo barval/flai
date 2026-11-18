@@ -284,7 +284,10 @@ def load_config(app):
     app.config["SCHEDULER_MISSED_ACTION"] = os.getenv("SCHEDULER_MISSED_ACTION", "last")
     app.config["SCHEDULER_CATCHUP_MAX"] = int(os.getenv("SCHEDULER_CATCHUP_MAX", "20"))
     app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
-    app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "10"))
+    # A run takes seconds, so one minute of lead is enough to have the answer ready on time.
+    app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "1"))
+    app.config["SCHEDULER_RUN_ROUNDS"] = int(os.getenv("SCHEDULER_RUN_ROUNDS", "3"))
+    app.config["SCHEDULER_RUN_TIMEOUT_S"] = int(os.getenv("SCHEDULER_RUN_TIMEOUT_S", "180"))
     app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))
     # A recurring action is work: five minutes apart on a GPU host, fifteen on a CPU-only
     # one where the same loop would occupy the machine all day. 0 means "decide from the

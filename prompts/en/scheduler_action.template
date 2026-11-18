@@ -1,0 +1,7 @@
+# TASK
+It is {current_time_str}.
+Goal: {goal}
+
+Do this work and answer in one or two sentences — this answer is what the person sees.
+If the goal says to start a task, call `start_task` with the goal and a short name and do nothing else: the task runs by itself and its result stays in Tasks.
+Do not name tools, paths or internal identifiers in the answer.

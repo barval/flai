@@ -309,9 +309,10 @@ An item is a row in `scheduler_items` with an absolute `next_run_at` (one indexe
 per tick) and the zone it was created in; `next_after()` computes the following firing on
 that wall clock, so nine in the morning stays nine across a daylight-saving change, and the
 tick advances from the scheduled moment rather than from the clock. Two kinds share the
-loop: a reminder is a prepared sentence delivered into its own chat (plus a popup event),
-an action is a task on the Tasks engine whose result is polled back through
-`tasks.scheduler_item_id`/`scheduler_deliver_at`. Creation from chat is the kernel's
+loop: a reminder is a prepared sentence delivered into its own chat (plus a popup event), and
+an action is a **service run** — a row in `scheduler_runs`, queued as a `service_run` task and
+executed by `app/scheduler_runner.py` through the engine loop, so the Tasks tab never sees it;
+a run may launch a real task through `start_task`. Creation from chat is the kernel's
 `schedule` intent or the marker router's category 13 `[-SCHEDULE-]` — both send the request
 to the chat loop, which owns the tools. Details → [SCHEDULER.md](SCHEDULER.md).
 

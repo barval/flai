@@ -51,6 +51,10 @@ def env(test_app, monkeypatch):
         clear()
         userdb.create_user(LOGIN, "pw", "Name", service_class=2, language="ru")
         monkeypatch.setattr(scheduler, "_redis", lambda app: None)
+        # A run queued by the tick must not be executed by the test worker mid-test.
+        monkeypatch.setattr(
+            test_app.request_queue, "add_service_run", lambda run_id, user_id, task_class, lang="ru": "queue-id"
+        )
         test_app.events_publisher = _Collector()
         test_app.config["SCHEDULER_TICK_ENABLED"] = False
         yield {"app": test_app}
@@ -163,11 +167,11 @@ def test_an_action_catches_up_once_and_not_with_a_pile(env):
 
     with db.get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT * FROM tasks WHERE scheduler_item_id = %s", (item_id,))
-        tasks = [dict(row) for row in c.fetchall()]
-    assert len(tasks) == 1
+        c.execute("SELECT * FROM scheduler_runs WHERE item_id = %s", (item_id,))
+        runs = [dict(row) for row in c.fetchall()]
+    assert len(runs) == 1
     # The newest missed firing, not the oldest: work cannot be run four times over.
-    assert tasks[0]["scheduler_deliver_at"] == NOW
+    assert runs[0]["due_at"] == NOW
 
 
 def test_a_missed_action_can_be_skipped_entirely(env):
@@ -187,7 +191,7 @@ def test_a_missed_action_can_be_skipped_entirely(env):
 
     with db.get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT count(*) AS n FROM tasks WHERE scheduler_item_id = %s", (item_id,))
+        c.execute("SELECT count(*) AS n FROM scheduler_runs WHERE item_id = %s", (item_id,))
         assert c.fetchone()["n"] == 0
     assert scheduler_store.get_item(item_id)["next_run_at"] > NOW
 

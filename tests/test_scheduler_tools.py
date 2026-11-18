@@ -41,7 +41,8 @@ def env(test_app, monkeypatch):
 
 
 def _ctx(**over):
-    ctx = {"user_id": LOGIN, "lang": "ru", "message_text": ""}
+    # start_task is a run-only tool; the marker is what the runner sets.
+    ctx = {"user_id": LOGIN, "lang": "ru", "message_text": "", "scheduler_run": True}
     ctx.update(over)
     return ctx
 
@@ -193,8 +194,8 @@ def test_both_prompts_name_the_intent(env, lang):
     assert "[-SCHEDULE-]" in marker
 
 
-def test_a_queued_task_is_cancelled_when_its_item_is_deleted(env, client):
-    from app.tasks import store
+def test_a_queued_run_is_cancelled_when_its_item_is_deleted(env, client):
+    from app import scheduler_runs
 
     with client.session_transaction() as browser_session:
         browser_session["login"] = LOGIN
@@ -205,17 +206,14 @@ def test_a_queued_task_is_cancelled_when_its_item_is_deleted(env, client):
         LOGIN, kind="action", title="Rooms", body="Check", repeat="once", at=datetime.now(UTC) + timedelta(hours=1),
         timezone_name=ZONE,
     )
-    task_id = store.create_task(
-        LOGIN, 5, "Rooms", "ru", "neutral", scheduler_item_id=item_id, scheduler_deliver_at=datetime.now(UTC)
-    )
+    run_id = scheduler_runs.create_run(item_id, LOGIN, datetime.now(UTC))
 
     response = client.post(f"/api/scheduler/items/{item_id}/delete")
 
     assert response.status_code == 200
     assert scheduler_store.get_item(item_id) is None
-    task = store.get_task(task_id)
-    assert task["status"] == "cancelled"
-    assert task["scheduler_delivered_at"] is not None
+    # The run row goes with its item (the foreign key cascades), so nothing can be delivered.
+    assert scheduler_runs.get_run(run_id) is None
 
 
 def test_the_list_is_owner_scoped(env, client):
@@ -417,3 +415,92 @@ def test_the_action_description_does_not_put_a_file_in_the_goal(env):
     # The prohibition may name a file; the example must not model one.
     assert "save it to a file" not in description
     assert "nothing else" in description
+
+
+def test_start_task_creates_a_prefixed_task(env):
+    from app.tasks import store as task_store
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "start_task",
+        {"goal": "Снимки всех комнат и события в файл", "title": "Снимки комнат"},
+        _ctx(),
+    )
+
+    assert "⚠️" not in answer
+    task = task_store.get_tasks_by_user(LOGIN)[0]
+    assert task["title"] == "🛠️ Планировщик: Снимки комнат"
+    assert "Снимки комнат" in answer
+
+
+def test_start_task_refuses_an_empty_goal(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("start_task", {"goal": "  ", "title": "Пусто"}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+
+
+def test_chat_does_not_offer_start_task(env):
+    from app.tools import get_tool_definitions
+
+    names = {d["function"]["name"] for d in get_tool_definitions()}
+
+    assert "start_task" not in names
+
+
+def test_a_run_does_not_offer_scheduling_or_the_skill_loader(env):
+    from app.tools import scheduler_run_tool_definitions
+
+    names = {d["function"]["name"] for d in scheduler_run_tool_definitions()}
+
+    assert "start_task" in names
+    assert "schedule_reminder" not in names
+    assert "schedule_action" not in names
+    assert "activate_skill" not in names
+    # The chat catalogue is still there: a run looks things up with the same tools.
+    assert "get_current_time" in names
+
+
+def test_a_launched_task_plans_by_the_full_goal(env):
+    """The title is the list label; the goal is what the planner must work from."""
+    from app.tasks import store as task_store
+    from app.tasks.executor import _request_text
+    from app.tools import execute_tool
+
+    goal = "Снимки всех комнат; для комнат с людьми дописать дату, время, комнату и описание в events.txt"
+    answer = execute_tool("start_task", {"goal": goal, "title": "Снимки комнат"}, _ctx())
+
+    assert "⚠️" not in answer
+    task = task_store.get_tasks_by_user(LOGIN)[0]
+    assert task["title"] == "🛠️ Планировщик: Снимки комнат"
+    assert _request_text(task).startswith(goal), _request_text(task)
+
+
+def test_start_task_refuses_when_tasks_are_disabled(env):
+    from app.tools import execute_tool
+
+    env.config["TASKS_ENABLED"] = False
+
+    answer = execute_tool(
+        "start_task", {"goal": "Собери отчёт", "title": "Отчёт"}, _ctx(scheduler_run=False)
+    )
+
+    assert answer.startswith("⚠️ ")
+    from app.tasks import store as task_store
+
+    assert task_store.get_tasks_by_user(LOGIN) == []
+
+
+def test_start_task_refuses_outside_a_scheduler_run(env):
+    """A chat turn that hallucinates the name must not create a task."""
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "start_task", {"goal": "Собери отчёт", "title": "Отчёт"}, _ctx(scheduler_run=False)
+    )
+
+    assert answer.startswith("⚠️ ")
+    from app.tasks import store as task_store
+
+    assert task_store.get_tasks_by_user(LOGIN) == []

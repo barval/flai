@@ -1187,6 +1187,36 @@ def _init_postgresql():
         "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
         " WHERE enabled AND next_run_at IS NOT NULL"
     )
+
+    # v13.6: one row per firing of an action. A run is not a task — it is a short service
+    # loop — so it lives in its own table and the Tasks tab cannot show it by construction.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_runs (
+            id            UUID PRIMARY KEY,
+            item_id       UUID NOT NULL REFERENCES scheduler_items(id) ON DELETE CASCADE,
+            user_id       TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'queued'
+                          CHECK (status IN ('queued','running','completed','failed','cancelled')),
+            due_at        TIMESTAMPTZ NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            started_at    TIMESTAMPTZ,
+            finished_at   TIMESTAMPTZ,
+            result        TEXT,
+            error         TEXT,
+            rounds        INTEGER NOT NULL DEFAULT 0,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            delivered_at  TIMESTAMPTZ
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_open ON scheduler_runs (item_id)"
+        " WHERE status IN ('queued','running')"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_due ON scheduler_runs (due_at)"
+        " WHERE delivered_at IS NULL"
+    )
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")
@@ -1194,17 +1224,13 @@ def _init_postgresql():
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
 
-    # v13.5: a scheduled action is a task with a due time. The result is held until
-    # scheduler_deliver_at even when it finished early, and scheduler_delivered_at
-    # records that the message went out — polling covers every ending the engine has
-    # (completed, failed, expired, cancelled) without a hook on each.
-    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_item_id UUID")
-    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_deliver_at TIMESTAMPTZ")
-    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_delivered_at TIMESTAMPTZ")
-    c.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tasks_scheduler ON tasks (scheduler_deliver_at)"
-        " WHERE scheduler_item_id IS NOT NULL AND scheduler_delivered_at IS NULL"
-    )
+    # v13.5 shipped an action as a task; v13.6 makes it a run in its own table, so the
+    # columns that tied a task to a schedule are dropped. The release never left the
+    # branch, so no installation carries rows that depend on them.
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_item_id")
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_deliver_at")
+    c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_delivered_at")
+    c.execute("DROP INDEX IF EXISTS idx_tasks_scheduler")
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

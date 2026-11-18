@@ -1,3 +1,20 @@
+## [v13.6] — unreleased
+
+### Changed
+
+- **A scheduled action is a run, not a task.** An action used to become a task on the Tasks engine, so every firing occupied the single task slot, sat in the Tasks tab beside the work a person started by hand, and competed with that work for the same queue position. A firing now creates a **run** in its own table (`scheduler_runs`) and executes as a short service loop — three model rounds at most, the chat tool catalogue minus the skill loader and scheduling itself, a deadline checked before each round. A run cannot appear in the Tasks tab by construction rather than by a filter, it is queued one minute ahead instead of ten, and chat outranks it without cancelling it. Overlap, the lateness window, deletion and restart recovery all read runs, so a crash can no longer leave an item silenced by a row nobody advances.
+
+### Added
+
+- **An action can start a real task.** A run carries `start_task(goal, title)`: when the goal asks for work larger than a few rounds — "check every room and write the events to a file" — the model calls it, and an ordinary task appears in the Tasks tab titled **🛠️ Scheduler: <name>**, with its result and its history like any task. The run's message is the tool's confirmation, verbatim, and one run launches at most one task. The model decides this from the goal; no phrase is matched in code.
+
+- **Two knobs in Admin → Settings → Scheduler:** `SCHEDULER_RUN_ROUNDS` (model rounds one run may spend, default 3) and `SCHEDULER_RUN_TIMEOUT_S` (seconds one run may take, checked before each round, default 180).
+
+### Migration
+
+- **Three `tasks` columns are dropped:** `scheduler_item_id`, `scheduler_deliver_at`, `scheduler_delivered_at`. `init_db()` removes them on the first start after the upgrade. Tasks created by the v13.5 action path remain ordinary tasks in the Tasks tab; their answers had already been delivered, so nothing is lost. Checked on an installation that ran the v13.5 path: 42 such tasks existed, all with `scheduler_delivered_at` set. A downgrade to v13.5 re-adds the columns empty — those actions would then be unscheduled, not duplicated.
+
+
 ## [v13.5] — 2026-11-18
 
 ### Changed

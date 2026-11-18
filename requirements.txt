@@ -13,6 +13,8 @@ redis>=7.0,<9
 Flask-Babel>=3.0
 qdrant-client==1.20.0
 pdfplumber>=0.11.0
+# PDF rendering for documents the assistant writes (BSD-3-Clause).
+reportlab>=4.2
 python-docx==1.2.0
 python-magic==0.4.27
 odfpy>=1.4.0

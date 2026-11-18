@@ -106,7 +106,9 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
   Code skills installable). → [SKILLS.md](docs/SKILLS.md)
 
 - **The assistant writes documents, and a task can use everything chat can.** `write_document`
-  stores text as an ordinary document of yours — with **append**, so a log can grow — and a newly
+  stores text as an ordinary document of yours in seven formats — Markdown, CSV, JSON and plain
+  text, plus Word (`.docx`), a spreadsheet (`.xlsx`) and PDF with a font that renders Russian —
+  with **append**, so a text log can grow — and a newly
   written file is **not** indexed until you tick *index* on its card, because a log written every
   fifteen minutes would otherwise be re-indexed 96 times a day. Meanwhile a background task gained
   `chat_tool` (any chat tool, through the same permission, rate limit and audit) and the skills the

@@ -493,10 +493,13 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
         "name": WRITE_DOCUMENT_TOOL,
         "description": (
             "Save a document for the user: a report, a summary, a letter, a table. The file "
-            "appears in the user's own document library and is indexed like any other document. "
+            "appears in the user's own document library and is not searched until the user ticks "
+            "its index switch. "
             "Use it whenever the answer is meant to be a FILE the user keeps. Give a display "
             "name without a path; the extension follows the format. For a table use format csv "
-            "with rows (a list of rows, each a list of cells), never a hand-built string."
+            "or xlsx with rows (a list of rows, each a list of cells), never a hand-built string. "
+            "Use docx for a document someone will edit in Word, pdf for one that must look the "
+            "same everywhere; headings are written as '# ', '## ', '### ' and bullets as '- '."
         ),
         "parameters": {
             "type": "object",
@@ -505,13 +508,35 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
                 "content": {"type": "string", "description": "The whole text of the document"},
                 "format": {
                     "type": "string",
-                    "enum": ["md", "csv", "json", "txt"],
-                    "description": "md for prose, csv with rows, json (must parse), txt plain",
+                    "enum": ["md", "csv", "json", "txt", "docx", "xlsx", "pdf"],
+                    "description": (
+                        "md for prose, csv with rows, json (must parse), txt plain, docx a Word "
+                        "document (text with headings and bullets), xlsx a spreadsheet (rows or "
+                        "sheets), pdf a fixed-layout document"
+                    ),
                 },
                 "rows": {
                     "type": "array",
-                    "description": "For csv only: the rows, each a list of cell values",
+                    "description": "For csv or xlsx: the rows, each a list of cell values",
                     "items": {"type": "array", "items": {"type": "string"}},
+                },
+                "sheets": {
+                    "type": "array",
+                    "description": (
+                        "For xlsx only: several sheets, each {name, rows}. Use rows instead for "
+                        "a single sheet."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Sheet name, up to 31 characters"},
+                            "rows": {
+                                "type": "array",
+                                "items": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
+                        "required": ["name", "rows"],
+                    },
                 },
                 "append": {
                     "type": "boolean",
@@ -1580,7 +1605,15 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
             "append_target": _("Can only append to a document this assistant wrote, not to an upload"),
             "json": _("The JSON does not parse, so nothing was written"),
             "name": _("The document name is not usable: {detail}"),
-            "csv_rows": _("A csv needs rows: a list of rows, each a list of cells"),
+            "csv_rows": _("A table needs rows: a list of rows, each a list of cells"),
+            "append_binary": _("Only text documents can grow: write a new file instead of appending"),
+            "too_large_binary": _("The document is too large to render ({detail} bytes)"),
+            "pdf_font": _("The PDF renderer has no font with Cyrillic on this installation"),
+            "too_many_sheets": _("Too many sheets in one workbook (max {detail})"),
+            "too_many_rows": _("Too many rows in one sheet (max {detail})"),
+            "too_many_columns": _("Too many columns in one row (max {detail})"),
+            "bad_rows": _("The rows are not a list of rows"),
+            "bad_sheets": _("The sheets are not a list of {name, rows} objects"),
         }
         text = messages.get(code, _("The document could not be written"))
         if "{detail}" in text:
@@ -1589,7 +1622,11 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
 
 
 def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
-    """Write a document and queue its indexing; the answer names the file."""
+    """Write a document; the answer names the file and the index switch.
+
+    Indexing is deliberately not queued here: a file written on every answer would
+    fill RAG and the graph, so the person decides with the switch on the card.
+    """
     from app import documents_write
 
     lang = ctx.get("lang", "ru")
@@ -1606,6 +1643,7 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
             fmt=str(kw.get("format") or "md"),
             rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
             append=bool(kw.get("append")),
+            sheets=kw.get("sheets") if isinstance(kw.get("sheets"), list) else None,
         )
     except documents_write.DocumentWriteError as exc:
         return _write_document_message(exc.code, exc.detail, lang)

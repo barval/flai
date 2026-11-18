@@ -372,8 +372,19 @@ SCHEDULER_TOOLS = ("schedule_reminder", "schedule_action")
 _WHEN_SCHEMA = {
     "type": "string",
     "description": (
-        "Local wall-clock moment in the user's time zone as 'YYYY-MM-DD HH:MM'. Work it out "
-        "from the current time given in the system prompt; never reuse a date from history."
+        "Absolute local wall-clock moment in the user's time zone as 'YYYY-MM-DD HH:MM'. "
+        "Work it out from the current time given in the system prompt; never reuse a date "
+        "from history or from this description. Omit it when the request is relative and "
+        "use in_minutes instead."
+    ),
+}
+
+_IN_MINUTES_SCHEMA = {
+    "type": "integer",
+    "description": (
+        "For a relative request ('in two minutes', 'in half an hour'): how many minutes "
+        "from now. Use this INSTEAD of when — it needs no date arithmetic, and a date you "
+        "calculate yourself is the mistake this field exists to prevent."
     ),
 }
 
@@ -397,6 +408,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "when": _WHEN_SCHEMA,
+                    "in_minutes": _IN_MINUTES_SCHEMA,
                     "text": {"type": "string", "description": "What to send at that moment"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
@@ -405,7 +417,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                         "description": "For repeat=minutes: the interval, at least 15",
                     },
                 },
-                "required": ["when", "text"],
+                "required": ["text"],
             },
         },
     },
@@ -423,6 +435,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "when": _WHEN_SCHEMA,
+                    "in_minutes": _IN_MINUTES_SCHEMA,
                     "goal": {"type": "string", "description": "What has to be done, in full"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
@@ -431,7 +444,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                         "description": "For repeat=minutes: the interval, at least 15",
                     },
                 },
-                "required": ["when", "goal"],
+                "required": ["goal"],
             },
         },
     },
@@ -1387,6 +1400,7 @@ def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
             repeat=kw.get("repeat"),
             every_minutes=kw.get("every_minutes"),
             zone_name=zone_name,
+            in_minutes=kw.get("in_minutes"),
         )
     except scheduler_tools.ScheduleRefusalError as refusal:
         return _schedule_refusal(language, refusal)

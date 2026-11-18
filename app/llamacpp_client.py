@@ -100,6 +100,26 @@ def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
         return key.format(**kwargs) if kwargs else key
 
 
+# A runaway generation can spend the whole window on one malformed tool call (measured:
+# 21 000 tokens and four minutes). An answer never needs more than this, and a stray loop
+# now costs seconds instead of the context.
+MAX_STREAM_TOKENS = 8192
+
+
+def _tool_call_was_unparsable(response: Any) -> bool:
+    """Whether llama-server refused the message because its tool call was malformed."""
+    try:
+        body = (response.text or "")[:4000].lower()
+    except Exception:  # noqa: BLE001 - a bodyless error is not this case
+        return False
+    return "tool call" in body and ("parse" in body or "json" in body)
+
+
+def _payload_without_tools(payload: dict[str, Any]) -> dict[str, Any]:
+    """The same request with the tool catalogue removed: the answer without tools."""
+    return {key: value for key, value in payload.items() if key not in ("tools", "tool_choice")}
+
+
 def _extract_error_message(response: Any) -> str:
     """Extract a human-readable error message from a llama.cpp HTTP response.
 
@@ -146,6 +166,11 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
         )
     if "upstream command exited prematurely" in lower:
         return _tr("Model crashed during startup. Check model file compatibility and GPU memory.", lang)
+    if "failed to parse tool call arguments" in lower or "parse tool call arguments" in lower:
+        # A small model can drift into malformed tool-call syntax and repeat it until the
+        # server refuses the message. The attempt is retried once without tools, so the
+        # user reads this only when even a plain answer failed.
+        return _tr("The model could not form a tool call. Please try again.", lang)
     if "no slot available" in lower:
         return _tr("Server is busy. All slots are occupied. Please try again shortly.", lang)
     if "failed to load image or audio file" in lower:
@@ -170,6 +195,12 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
     return msg
 
 
+# The server's own message can be the whole malformed tool-call buffer: measured on the
+# live instance, 85 156 characters of repeated <tool_call> blocks reached the chat as a
+# single answer. The user gets a short sentence; the log keeps the rest.
+MAX_USER_ERROR_CHARS = 300
+
+
 def _format_user_error(response: Any, lang: str = "ru") -> str:
     """Build a user-facing error string with the "⚠️ " prefix.
 
@@ -179,7 +210,11 @@ def _format_user_error(response: Any, lang: str = "ru") -> str:
     msg = _extract_error_message(response)
     if msg:
         translated = _translate_llama_swap_error(msg, lang)
-        return translated if translated.startswith("⚠️") else f"⚠️ {translated}"
+        if not translated.startswith("⚠️"):
+            translated = f"⚠️ {translated}"
+        if len(translated) > MAX_USER_ERROR_CHARS:
+            translated = translated[: MAX_USER_ERROR_CHARS - 1].rstrip() + "…"
+        return translated
     status = getattr(response, "status_code", 0) or 0
     return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
 
@@ -768,7 +803,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             "model": model,
             "messages": messages,
             "stream": True,
-            "max_tokens": context,
+            "max_tokens": min(context, MAX_STREAM_TOKENS),
             "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
@@ -791,6 +826,15 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         response = None
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
+            if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                # The model drifted into malformed tool syntax and repeated it until the
+                # server gave up. Answering without tools is what shipped before tools —
+                # a fallback, not a second failure.
+                self.logger.warning(f"chat_stream: malformed tool call from {model_type}, retrying without tools")
+                payload = _payload_without_tools(payload)
+                response = requests.post(
+                    f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                )
             if response.status_code != 200:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -1252,6 +1296,10 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             # Enforcing a thinking budget makes llama.cpp inject the
             # end-of-thinking tag and switch to the actual answer in time.
             payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
+        else:
+            # A runaway tool call can spend the whole window on one malformed answer;
+            # an ordinary answer never needs more than this.
+            payload["max_tokens"] = min(config.get("context_length", 4096), MAX_STREAM_TOKENS)
 
         # Reasoning: up to 3 attempts on a transient 502. Under llama-swap JIT
         # loading the model may still be starting on the first request (TTL=1s),
@@ -1271,6 +1319,14 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     response = requests.post(
                         f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                     )
+                    if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                        self.logger.warning(
+                            f"chat_stream: malformed tool call from {model_type}, retrying without tools"
+                        )
+                        payload = _payload_without_tools(payload)
+                        response = requests.post(
+                            f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                        )
                     if response.status_code != 200:
                         # Retry on 502 (typical transient failure) OR on
                         # "Failed to load image" 400 (race condition when

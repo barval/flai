@@ -520,3 +520,95 @@ class TestChatStreamReasoningTailFlush:
         joined = "".join(tokens)
         assert joined == answer
         assert answer[-50:] in joined
+
+
+class TestErrorSizeAndToolCallFallback:
+    """The live failure of 2026-11-18: a malformed tool call returned 76 KB of JSON."""
+
+    def _response(self, status, payload):
+        resp = MagicMock()
+        resp.status_code = status
+        resp.json.return_value = payload
+        resp.text = json.dumps(payload)
+        return resp
+
+    def test_a_huge_server_message_becomes_one_short_sentence(self):
+        huge = "x" * 70000
+        resp = self._response(500, {"error": {"code": 500, "message": huge}})
+
+        out = _format_user_error(resp, "ru")
+
+        assert out.startswith("⚠️ ")
+        assert len(out) <= 300
+        assert out.endswith("…")
+
+    def test_a_malformed_tool_call_is_translated_not_dumped(self, test_app):
+        from app.llamacpp_client import _translate_llama_swap_error
+
+        message = (
+            "Failed to parse tool call arguments as JSON: [json.exception.parse_error.101] "
+            "parse error at line 1, column 85156: syntax error while parsing value"
+        )
+
+        out = _translate_llama_swap_error(message, "ru")
+
+        assert "85156" not in out
+        assert "tool call" in out.lower() or "инструмент" in out.lower()
+
+    def test_the_generation_is_bounded(self):
+        with patch("app.llamacpp_client.requests.post") as mock_post:
+            mock_post.return_value = self._response(500, {"error": {"message": "boom"}})
+            from app.llamacpp_client import MAX_STREAM_TOKENS, LlamaSwapBackend
+
+            backend = LlamaSwapBackend()
+            cb = MagicMock()
+            cb.can_execute.return_value = True
+            with patch.object(backend, "_get_circuit_breaker", return_value=cb):
+                list(
+                    backend.chat_stream(
+                        [{"role": "user", "content": "test"}],
+                        model="m",
+                        config={"context_length": 24576},
+                        timeout=60,
+                        lang="en",
+                        model_type="multimodal",
+                    )
+                )
+
+            sent = mock_post.call_args.kwargs["json"]
+            assert sent["max_tokens"] == MAX_STREAM_TOKENS
+
+    def test_a_broken_tool_call_is_retried_without_tools(self):
+        broken = self._response(
+            500,
+            {"error": {"code": 500, "message": "Failed to parse tool call arguments as JSON: column 85156"}},
+        )
+        answer = MagicMock()
+        answer.status_code = 200
+        answer.iter_lines.return_value = [
+            b'data: {"choices":[{"delta":{"content":"ok"}}]}',
+            b"data: [DONE]",
+        ]
+
+        with patch("app.llamacpp_client.requests.post", side_effect=[broken, answer]) as mock_post:
+            from app.llamacpp_client import LlamaSwapBackend
+
+            backend = LlamaSwapBackend()
+            cb = MagicMock()
+            cb.can_execute.return_value = True
+            with patch.object(backend, "_get_circuit_breaker", return_value=cb):
+                tokens = list(
+                    backend.chat_stream(
+                        [{"role": "user", "content": "test"}],
+                        model="m",
+                        config={"context_length": 24576},
+                        timeout=60,
+                        lang="en",
+                        model_type="multimodal",
+                        tools=[{"type": "function", "function": {"name": "t"}}],
+                    )
+                )
+
+        assert mock_post.call_count == 2
+        assert "tools" not in mock_post.call_args_list[1].kwargs["json"]
+        assert "ok" in "".join(str(token) for token in tokens)

@@ -235,3 +235,44 @@ def test_the_list_is_owner_scoped(env, client):
 
     assert [item["title"] for item in listed["items"]] == ["Mine"]
     assert listed["items"][0]["kind"] == "reminder"
+
+
+def test_a_relative_request_needs_no_date(env):
+    """«In two minutes» must not become date arithmetic — a model invents dates."""
+    from datetime import UTC, datetime
+
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"in_minutes": 2, "text": "🔔 Проверить"}, _ctx())
+
+    assert "⚠️" not in answer
+    item = scheduler_store.list_items(LOGIN)[0]
+    delta = item["next_run_at"] - datetime.now(UTC)
+    assert 60 < delta.total_seconds() < 180
+
+
+def test_an_absolute_moment_still_works(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"when": _tomorrow_at(nine=True), "text": "🔔 Отчёт"}, _ctx())
+
+    assert "⚠️" not in answer
+    assert scheduler_store.list_items(LOGIN)[0]["time_of_day"].hour == 9
+
+
+def test_no_time_at_all_is_refused(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"text": "🔔 Без времени"}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_a_nonsense_interval_is_refused(env):
+    from app.tools import execute_tool
+
+    for value in (0, -5, "soon", 10**9):
+        answer = execute_tool("schedule_reminder", {"in_minutes": value, "text": "🔔"}, _ctx())
+        assert answer.startswith("⚠️ "), value
+    assert scheduler_store.list_items(LOGIN) == []

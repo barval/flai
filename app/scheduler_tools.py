@@ -12,7 +12,7 @@ cannot see until the wrong moment arrives.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # Parsing a moment is deterministic and cheap; picking it apart from prose is the model's
@@ -29,6 +29,8 @@ _FORMATS = (
 
 REPEATS = ("once", "minutes", "daily", "weekly", "monthly")
 MIN_EVERY_MINUTES = 15
+# A year of minutes: past it the "in N minutes" field is a mistake, not a schedule.
+_MAX_IN_MINUTES = 60 * 24 * 365
 MAX_BODY_CHARS = 4000
 MAX_TITLE_CHARS = 120
 
@@ -82,22 +84,47 @@ def _repeat_of(raw: str | None) -> str:
     return repeat
 
 
-def plan(kind: str, when_raw: str | None, repeat_raw: str | None, every_minutes, zone_name: str, now=None):
+def plan(
+    kind: str,
+    when_raw: str | None,
+    repeat_raw: str | None,
+    every_minutes,
+    zone_name: str,
+    now=None,
+    in_minutes=None,
+):
     """Resolve the phrase into a concrete moment, the recurrence fields and the local time.
+
+    ``in_minutes`` is the relative form ("in two minutes") and takes precedence: a small
+    model that has to convert "in two minutes" into an absolute date invents one — measured
+    on the live instance, it wrote 2024-05-21 for a request made in 2026. The relative form
+    has no date to get wrong.
 
     Returns ``(moment_utc, local_moment, fields)`` or raises :class:`ScheduleRefusalError`.
     """
     from app.scheduler import next_after
 
+    current = now or datetime.now(UTC)
+    zone = zone_for(zone_name)
+    repeat = _repeat_of(repeat_raw)
+
+    if in_minutes not in (None, ""):
+        try:
+            minutes = int(in_minutes)
+        except (TypeError, ValueError) as exc:
+            raise ScheduleRefusalError("time_unclear") from exc
+        if minutes < 1 or minutes > _MAX_IN_MINUTES:
+            raise ScheduleRefusalError("time_unclear")
+        moment = current + timedelta(minutes=minutes)
+        local = moment.astimezone(zone)
+        return moment, local, _fields(local, repeat, every_minutes, zone_name)
+
     moment_local = parse_when(when_raw)
     if moment_local is None:
         raise ScheduleRefusalError("time_unclear")
 
-    repeat = _repeat_of(repeat_raw)
-    zone = zone_for(zone_name)
     local = moment_local.replace(tzinfo=zone)
     moment = local.astimezone(UTC)
-    current = now or datetime.now(UTC)
 
     interval = None
     if repeat == "minutes":
@@ -126,7 +153,12 @@ def plan(kind: str, when_raw: str | None, repeat_raw: str | None, every_minutes,
             raise ScheduleRefusalError("in_the_past", when=local)
         local = moment.astimezone(zone)
 
-    fields = {
+    return moment, local, _fields(local, repeat, interval, zone_name)
+
+
+def _fields(local: datetime, repeat: str, interval, zone_name: str) -> dict:
+    """The recurrence columns for a firing at ``local``."""
+    return {
         "repeat": repeat,
         "time_of_day": local.time().replace(second=0, microsecond=0),
         "weekday": local.weekday(),
@@ -134,7 +166,6 @@ def plan(kind: str, when_raw: str | None, repeat_raw: str | None, every_minutes,
         "every_minutes": interval,
         "timezone": zone_name,
     }
-    return moment, local, fields
 
 
 def create_item(
@@ -147,6 +178,7 @@ def create_item(
     every_minutes=None,
     zone_name: str = "UTC",
     now=None,
+    in_minutes=None,
 ):
     """Store one scheduled item; return ``(item_id, local_moment)``."""
     from app import scheduler_store
@@ -159,7 +191,9 @@ def create_item(
     if len(text) > MAX_BODY_CHARS:
         raise ScheduleRefusalError("too_long", limit=MAX_BODY_CHARS)
 
-    moment, local, fields = plan(kind, when_raw, repeat, every_minutes, zone_name, now=now)
+    moment, local, fields = plan(
+        kind, when_raw, repeat, every_minutes, zone_name, now=now, in_minutes=in_minutes
+    )
     item_id = scheduler_store.create_item(
         user_id,
         kind=kind,

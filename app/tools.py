@@ -453,6 +453,38 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+START_TASK_TOOL = "start_task"
+
+_START_TASK_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": START_TASK_TOOL,
+        "description": (
+            "Start a real background task for work that needs planning: several steps, several "
+            "sources, files to write. Use it when the goal says to start or launch a task. The "
+            "task appears in the user's own task list and its result stays there; this run only "
+            "reports that it started, in one sentence."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "The work, in full, as the user asked it"},
+                "title": {"type": "string", "description": "A short name for the task list"},
+            },
+            "required": ["goal", "title"],
+        },
+    },
+}
+
+def scheduler_run_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
+    """The tools one scheduler run may use."""
+    definitions = [
+        item for item in get_tool_definitions(lang)
+        if item.get("function", {}).get("name") not in SCHEDULER_RUN_EXCLUDED_TOOLS
+    ]
+    return definitions + [dict(_START_TASK_DEFINITION)]
+
+
 WRITE_DOCUMENT_TOOL = "write_document"
 
 _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
@@ -1387,6 +1419,50 @@ def _schedule_refusal(language: str, refusal) -> str:
         return "⚠️ " + str(_("The schedule could not be created"))
 
 
+def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
+    """Launch an ordinary task: it is the person's, and its result stays in their list."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    from app import userdb
+    from app.scheduler import _SERVICE_TO_TASK_CLASS
+    from app.tasks import store as task_store
+
+    language = str(ctx.get("lang") or "ru")
+    login = str(ctx.get("user_id") or "")
+    goal = str(kw.get("goal") or "").strip()
+    title = str(kw.get("title") or "").strip() or goal[:60]
+
+    if not login:
+        with force_locale(language):
+            return "⚠️ " + str(_("User not identified for the scheduler"))
+    if not goal:
+        with force_locale(language):
+            return "⚠️ " + str(_("There is nothing to do: the task needs a goal"))
+
+    service_class = 2
+    try:
+        row = userdb.get_user_by_login(login) or {}
+        service_class = int(row.get("service_class", 2))
+    except Exception:  # noqa: BLE001 - an unknown account still gets the lowest class
+        service_class = 2
+
+    with force_locale(language):
+        prefixed = str(_("🛠️ Scheduler: {name}")).format(name=title)
+    task_id = task_store.create_task(
+        login,
+        _SERVICE_TO_TASK_CLASS.get(service_class, 5),
+        prefixed,
+        language,
+        str(ctx.get("response_style") or "neutral"),
+    )
+    current_app.logger.info(f"service run started task {task_id} ({prefixed})")
+    with force_locale(language):
+        return str(_("🛠️ {title} — the task is started and its result will appear in Tasks")).format(
+            title=title
+        )
+
+
 def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
     """Create one scheduled item from the model's structured fields."""
     from flask import current_app
@@ -1450,6 +1526,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
     WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    "start_task": lambda ctx, **kw: _exec_start_task(ctx, **kw),
     "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
     "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
     "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
@@ -1463,6 +1540,10 @@ _EXECUTOR_MAP: dict[str, Any] = {
 
 
 SKILL_LOADER_TOOL = "activate_skill"
+
+# A run gets the chat catalogue minus these: the skill loader has no turn to load into, and a
+# scheduler tool in a run would let a schedule create schedules.
+SCHEDULER_RUN_EXCLUDED_TOOLS = frozenset({SKILL_LOADER_TOOL, "schedule_reminder", "schedule_action"})
 
 
 def _write_document_message(code: str, detail: str, lang: str) -> str:

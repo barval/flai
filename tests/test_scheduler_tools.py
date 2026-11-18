@@ -417,3 +417,48 @@ def test_the_action_description_does_not_put_a_file_in_the_goal(env):
     # The prohibition may name a file; the example must not model one.
     assert "save it to a file" not in description
     assert "nothing else" in description
+
+
+def test_start_task_creates_a_prefixed_task(env):
+    from app.tasks import store as task_store
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "start_task",
+        {"goal": "Снимки всех комнат и события в файл", "title": "Снимки комнат"},
+        _ctx(),
+    )
+
+    assert "⚠️" not in answer
+    task = task_store.get_tasks_by_user(LOGIN)[0]
+    assert task["title"] == "🛠️ Планировщик: Снимки комнат"
+    assert "Снимки комнат" in answer
+
+
+def test_start_task_refuses_an_empty_goal(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("start_task", {"goal": "  ", "title": "Пусто"}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+
+
+def test_chat_does_not_offer_start_task(env):
+    from app.tools import get_tool_definitions
+
+    names = {d["function"]["name"] for d in get_tool_definitions()}
+
+    assert "start_task" not in names
+
+
+def test_a_run_does_not_offer_scheduling_or_the_skill_loader(env):
+    from app.tools import scheduler_run_tool_definitions
+
+    names = {d["function"]["name"] for d in scheduler_run_tool_definitions()}
+
+    assert "start_task" in names
+    assert "schedule_reminder" not in names
+    assert "schedule_action" not in names
+    assert "activate_skill" not in names
+    # The chat catalogue is still there: a run looks things up with the same tools.
+    assert "get_current_time" in names

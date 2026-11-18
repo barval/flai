@@ -84,9 +84,22 @@ def test_a_scheduler_chat_keeps_its_own_mark():
     template = _read("app/templates/chat.html")
 
     assert "function sessionTitleMark" in sessions
+    assert "function splitTitleMark" in sessions
     assert "Extended_Pictographic" in sessions
-    assert "sessionTitleMark(s.title)" in sessions
+    assert "splitTitleMark(s.title).mark" in sessions
     assert "s.title[:1] in ('🔔', '⚙️')" in template
+
+
+def test_a_delivery_chat_pulses_its_own_mark_not_an_envelope():
+    """An envelope in a delivery channel reads as a letter nobody will answer."""
+    sessions = _read("app/static/js/chat-sessions.js")
+    css = _read("app/static/css/chat.css")
+
+    assert "scheduler_kind: sessionsData[id].scheduler_kind" in sessions
+    assert "unreadMark = true" in sessions
+    assert "session-title-mark" in sessions
+    assert "@keyframes session-mark-pulse" in css
+    assert "prefers-reduced-motion: reduce" in css
 
 
 def test_the_popup_scrolls_instead_of_leaving_the_screen():

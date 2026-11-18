@@ -41,6 +41,17 @@ function sessionTitleMark(title) {
     return /^\p{Extended_Pictographic}/u.test(text) ? '' : '📝 ';
 }
 
+// The leading mark and the rest of the title, apart: the mark is an element of its own so
+// a delivery chat can pulse its own bell instead of showing an envelope.
+function splitTitleMark(title) {
+    const text = String(title || '');
+    const match = text.match(/^(\p{Extended_Pictographic}\uFE0F?)\s*/u);
+    if (match) {
+        return { mark: match[1], rest: text.slice(match[0].length) };
+    }
+    return { mark: '📝', rest: text };
+}
+
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -134,6 +145,7 @@ function loadSessionsFromServer() {
                 const sessionsList = Object.keys(sessionsData).map(id => ({
                     id: id,
                     title: sessionsData[id].title,
+                    scheduler_kind: sessionsData[id].scheduler_kind,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
                     total_prompt_tokens: sessionsData[id].total_prompt_tokens,
@@ -173,6 +185,7 @@ function updateSessionsListFromData() {
         const sessions = Object.keys(sessionsData).map(id => ({
             id: id,
             title: sessionsData[id].title,
+            scheduler_kind: sessionsData[id].scheduler_kind,
             updated_at: sessionsData[id].updated_at,
             message_count: sessionsData[id].message_count,
             total_prompt_tokens: sessionsData[id].total_prompt_tokens,
@@ -207,6 +220,7 @@ function updateSessionsList(sessions) {
     let html = '';
     sessions.forEach(s => {
         const isActive = s.id === currentActiveId ? 'active' : '';
+        let unreadMark = false;
         const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
         
         // Build status icons with proper priority
@@ -232,7 +246,13 @@ function updateSessionsList(sessions) {
             // No queue status - show unread indicator if needed (only for non-active sessions)
             // Use s.has_unread from server data OR local newMessageIndicators
             if ((s.has_unread || newMessageIndicators[s.id]) && s.id !== currentActiveId) {
-                statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
+                if (s.scheduler_kind) {
+                    // A delivery chat says "new" with its own mark: an envelope there reads
+                    // as an unanswered letter, and there is nobody to answer.
+                    unreadMark = true;
+                } else {
+                    statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
+                }
             }
         }
         
@@ -248,7 +268,7 @@ function updateSessionsList(sessions) {
         <div class="session-info">
             <div class="session-title">
                 ${ttsIcon}${statusIcons}
-                ${sessionTitleMark(s.title)}${escapeHtml(s.title)}
+                <span class="session-title-mark${unreadMark ? ' unread' : ''}"${unreadMark ? ' title="' + t('new_response') + '"' : ''}>${escapeHtml(splitTitleMark(s.title).mark)}</span> ${escapeHtml(splitTitleMark(s.title).rest)}
             </div>
             <div class="session-date">📅 ${dateStr} [${s.message_count}]${sessionTokenStatsHTML(s.total_prompt_tokens, s.total_completion_tokens)}</div>
         </div>

@@ -1664,6 +1664,25 @@ video {
     margin: 0;
 }
 
+/* A scheduler chat says "new" with its own mark (the bell), not with an envelope: there is
+   nobody to answer in a delivery channel. Slow enough to read, not to nag. */
+.session-title-mark {
+    display: inline-block;
+}
+.session-title-mark.unread {
+    animation: session-mark-pulse 1.6s ease-in-out infinite;
+}
+@keyframes session-mark-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(1.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .session-title-mark.unread {
+        animation: none;
+        opacity: 0.6;
+    }
+}
+
 /* A scheduler chat receives messages and asks nothing: no scope picker, no deep-analysis
    toggle, no input, microphone, attachment or Send button. */
 body.service-chat .rlm-controls,

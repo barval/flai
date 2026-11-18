@@ -292,6 +292,13 @@ def deliver(app, item: dict, fired_at: datetime) -> int | str | None:
     moment = scheduled.astimezone(_zone(item.get("timezone")))
     body = str(item.get("body") or "").strip() or str(item.get("title") or "").strip()
     text = body.replace("{when}", render_when(moment, language))
+    skipped = int(item.get("_skipped") or 0)
+    if skipped > 0:
+        # "last" (and "all" past its cap) delivers one firing but says how many it stands for.
+        from flask_babel import force_locale, gettext
+
+        with force_locale(language):
+            text = str(gettext("Skipped firings: {count}")).format(count=skipped) + "\n\n" + text
     return deliver_message(app, item, text)
 
 
@@ -311,22 +318,83 @@ def _advance(item: dict, scheduled: datetime, now: datetime) -> datetime | None:
     return following
 
 
+def missed_policy(app, kind: str) -> str:
+    """The policy for this kind, and ``last`` for anything that makes no sense."""
+    key = "SCHEDULER_MISSED_ACTION" if kind == "action" else "SCHEDULER_MISSED_REMINDER"
+    value = str(app.config.get(key) or "last").strip().lower()
+    return value if value in ("all", "last", "none") else "last"
+
+
+def firing_series(item: dict, start: datetime, now: datetime, boundary: int = 10000) -> list[datetime]:
+    """Every firing from ``start`` up to ``now``, oldest first.
+
+    The walk is bounded: an every-fifteen-minutes item after a hundred days of downtime
+    is 9 600 moments, which is cheap to count and must never become an infinite loop.
+    """
+    moments: list[datetime] = []
+    moment: datetime | None = start
+    while moment is not None and moment <= now and len(moments) < boundary:
+        moments.append(moment)
+        moment = next_after(item, moment)
+    return moments
+
+
+def selected_firings(policy: str, kind: str, moments: list[datetime], cap: int) -> tuple[list[datetime], int]:
+    """Which missed firings are delivered, and how many are skipped.
+
+    ``all`` is the only policy that catches up, and it is bounded: past ``cap`` the item
+    behaves as ``last`` and says how many were skipped, because 672 messages in one tick
+    is a flood, not a policy. An action always catches up once — four copies of the same
+    work is a pile behind one GPU, not four results.
+    """
+    if not moments:
+        return [], 0
+    if policy == "none":
+        return [], len(moments)
+    if kind == "action":
+        return [moments[-1]], len(moments) - 1
+    if policy == "all" and cap > 0 and len(moments) <= cap:
+        return list(moments), 0
+    return [moments[-1]], len(moments) - 1
+
+
 def _fire(app, item: dict, now: datetime) -> dict:
-    """One due item: deliver (or enqueue) it, then schedule the next firing."""
+    """One due item: deliver (or enqueue) it, then schedule the next firing.
+
+    A firing that is more than ``SCHEDULER_GRACE_MIN`` late is missed, and the missed
+    policy decides what the person hears: every firing, only the newest one named with
+    how many were skipped, or nothing at all (the item still advances).
+    """
     from app import scheduler_store
 
-    counts = {"delivered": 0, "skipped": 0, "failed": 0}
-    try:
-        outcome = deliver(app, item, now)
-        if outcome is None:
-            counts["skipped"] = 1
-        else:
-            counts["delivered"] = 1
-    except Exception:  # noqa: BLE001 - one broken item must not stop the tick
-        logger.exception(f"scheduler: item {item.get('id')} could not be delivered")
-        counts["failed"] = 1
+    counts = {"delivered": 0, "skipped": 0, "failed": 0, "missed": 0}
+    kind = str(item.get("kind") or "reminder")
+    scheduled = item.get("next_run_at") or now
+    grace = timedelta(minutes=max(0.0, float(app.config.get("SCHEDULER_GRACE_MIN", 2) or 0)))
+    cap = int(app.config.get("SCHEDULER_CATCHUP_MAX", 20) or 0)
 
-    following = _advance(item, item.get("next_run_at") or now, now)
+    if scheduled <= now - grace:
+        moments = firing_series(item, scheduled, now)
+        selected, missed = selected_firings(missed_policy(app, kind), kind, moments, cap)
+        counts["missed"] = missed
+    else:
+        selected, missed = [scheduled], 0
+
+    for moment in selected:
+        # Each firing carries its own moment, so {when} names the time it was due for
+        # rather than the time it was delivered.
+        payload = dict(item, next_run_at=moment, _skipped=missed)
+        try:
+            outcome = deliver(app, payload, moment)
+            if outcome is None:
+                counts["skipped"] += 1
+            else:
+                counts["delivered"] += 1
+        except Exception:  # noqa: BLE001 - one broken firing must not stop the item
+            logger.exception(f"scheduler: item {item.get('id')} could not be delivered")
+            counts["failed"] += 1
+
+    following = _advance(item, scheduled, now)
     if following is None:
         scheduler_store.update_item(item["id"], next_run_at=None, last_run_at=now, enabled=False)
     else:
@@ -427,13 +495,14 @@ def tick(app, now: datetime | None = None) -> dict:
         return {"delivered": 0, "skipped": 0, "failed": 0, "skipped_lease": 1}
 
     _cancel_overdue(app, moment)
-    counts = {"delivered": _deliver_ready(app, moment), "skipped": 0, "failed": 0}
+    counts = {"delivered": _deliver_ready(app, moment), "skipped": 0, "failed": 0, "missed": 0}
     lead = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 10) or 0)
     for item in scheduler_store.due_items(moment, action_lead_minutes=lead):
         result = _fire(app, item, moment)
         counts["delivered"] += result["delivered"]
         counts["skipped"] += result["skipped"]
         counts["failed"] += result["failed"]
+        counts["missed"] += result["missed"]
     return counts
 
 

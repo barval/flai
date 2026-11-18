@@ -48,3 +48,39 @@ def test_the_script_closes_on_escape_and_keeps_a_queue():
     assert "Escape" in script
     assert "schedulerPopupQueue" in script
     assert "textContent" in script and "innerHTML" not in script
+
+
+def test_a_delivered_message_names_its_chat_instead_of_a_model():
+    """The reminder is not this model's answer: the header names the chat that sent it."""
+    messages = _read("app/static/js/chat-messages.js")
+
+    assert "schedulerKind" in messages
+    assert "scheduler_chat_reminder" in messages
+    assert "message-scheduler-label" in messages
+
+
+def test_the_wrapper_forwards_the_scheduler_kind():
+    init = _read("app/static/js/chat-init.js")
+
+    assert "schedulerKind" in init
+
+
+def test_the_sidebar_reloads_for_a_chat_it_has_never_seen():
+    """A scheduler chat is created on the server: without this it stays invisible."""
+    events = _read("app/static/js/events.js")
+    sessions = _read("app/static/js/chat-sessions.js")
+
+    assert "reloadSessionsForIncomingMessage" in sessions
+    assert "reloadSessionsForIncomingMessage()" in events
+    assert "!sessionsData[data.session_id]" in events
+
+
+def test_a_scheduler_chat_keeps_its_own_mark():
+    """«📝 🔔 Планировщик» is two icons for one thing: one mark per title."""
+    sessions = _read("app/static/js/chat-sessions.js")
+    template = _read("app/templates/chat.html")
+
+    assert "function sessionTitleMark" in sessions
+    assert "Extended_Pictographic" in sessions
+    assert "sessionTitleMark(s.title)" in sessions
+    assert "s.title[:1] in ('🔔', '⚙️')" in template

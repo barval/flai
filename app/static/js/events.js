@@ -1473,6 +1473,12 @@ function onMessageNew(data) {
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {
         setNewMessageIndicator(data.session_id, true);
+        // A chat the sidebar has never seen (the scheduler's, created on first delivery)
+        // must appear now: the flag above is remembered per id and the reload picks it up.
+        if (typeof sessionsData !== 'undefined' && !sessionsData[data.session_id]
+            && typeof reloadSessionsForIncomingMessage === 'function') {
+            reloadSessionsForIncomingMessage();
+        }
         return;
     }
     if (displayedMessageIds.has(data.message_id)) {
@@ -1545,7 +1551,8 @@ function onMessageNew(data) {
                     msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                     msg.timestamp, responseTime, msg.model_name,
                     msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                    msg.scheduler_kind
                 );
             }
             if (sessionsData[data.session_id]) {
@@ -1583,7 +1590,8 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                        msg.scheduler_kind
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;

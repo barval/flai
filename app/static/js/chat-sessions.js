@@ -1,6 +1,26 @@
 // app/static/js/chat-sessions.js
 // Session management functions
 
+let sessionsReloadPending = false;
+
+// A scheduler chat is created on the server the first time it delivers something, so the
+// sidebar has no row for it: the reminder arrived, the popup closed, and the chat stayed
+// invisible until a manual refresh. Reload the list once per burst, not once per message.
+function reloadSessionsForIncomingMessage() {
+    if (sessionsReloadPending || typeof loadSessionsFromServer !== 'function') return;
+    sessionsReloadPending = true;
+    Promise.resolve(loadSessionsFromServer()).finally(() => {
+        sessionsReloadPending = false;
+    });
+}
+
+// A title that already carries its own mark — the scheduler's 🔔/⚙️ — keeps it.
+// Prefixing 📝 there reads as two icons for one thing ("📝 🔔 Планировщик").
+function sessionTitleMark(title) {
+    const text = String(title || '');
+    return /^\p{Extended_Pictographic}/u.test(text) ? '' : '📝 ';
+}
+
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -203,7 +223,7 @@ function updateSessionsList(sessions) {
         <div class="session-info">
             <div class="session-title">
                 ${ttsIcon}${statusIcons}
-                📝 ${escapeHtml(s.title)}
+                ${sessionTitleMark(s.title)}${escapeHtml(s.title)}
             </div>
             <div class="session-date">📅 ${dateStr} [${s.message_count}]${sessionTokenStatsHTML(s.total_prompt_tokens, s.total_completion_tokens)}</div>
         </div>
@@ -314,7 +334,7 @@ function updateSessionTitle(sessionId, newTitle) {
     const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
     if (!sessionItem) return;
     const titleElement = sessionItem.querySelector('.session-title');
-    if (titleElement) titleElement.innerHTML = '📝 ' + escapeHtml(newTitle);
+    if (titleElement) titleElement.innerHTML = sessionTitleMark(newTitle) + escapeHtml(newTitle);
     const now = new Date();
     const formattedDate = formatFullDateTime(now.toISOString());
     const dateElement = sessionItem.querySelector('.session-date');

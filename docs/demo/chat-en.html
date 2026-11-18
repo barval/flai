@@ -11328,6 +11328,7 @@ video {
         <\!-- Sessions list (visible by default) -->
         <div class="sessions-list" id="sessions-list">
 
+
             <div class="session-item " data-session-id="134bf047-6656-41c5-89e7-f323e8b8d723">
                 <div class="session-content">
                     <div class="session-info">
@@ -11337,6 +11338,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item " data-session-id="e38a5213-4470-4b2b-9526-476452816205">
                 <div class="session-content">
@@ -11348,6 +11350,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="a7dca96d-3331-4a9c-8890-f4af47d5acc8">
                 <div class="session-content">
                     <div class="session-info">
@@ -11357,6 +11360,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item active" data-session-id="804ce46d-28f6-47a5-9f54-812ee8025d2b">
                 <div class="session-content">
@@ -11368,6 +11372,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="5cf72370-6da9-4fd7-88ed-302c002a238c">
                 <div class="session-content">
                     <div class="session-info">
@@ -11377,6 +11382,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item " data-session-id="47679148-5bfb-4768-8ff8-3cdbe4398ebc">
                 <div class="session-content">
@@ -11388,6 +11394,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="380f8bec-0887-4f49-8ae9-5f57a18548d4">
                 <div class="session-content">
                     <div class="session-info">
@@ -11397,6 +11404,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item " data-session-id="c179132f-6838-43bc-8b8f-de9f912c6db9">
                 <div class="session-content">
@@ -11408,6 +11416,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="2e652ce2-7552-4eeb-ac07-d1aa459eeafd">
                 <div class="session-content">
                     <div class="session-info">
@@ -11417,6 +11426,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item " data-session-id="90cdfe40-a59e-402c-83b2-c2e6c93751f7">
                 <div class="session-content">
@@ -11428,6 +11438,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="8250ffdc-e2e6-4c24-b2fe-ade8a8df770a">
                 <div class="session-content">
                     <div class="session-info">
@@ -11438,6 +11449,7 @@ video {
                 </div>
             </div>
 
+
             <div class="session-item " data-session-id="beb05a93-4405-4a70-8ebd-16483490930b">
                 <div class="session-content">
                     <div class="session-info">
@@ -11447,6 +11459,7 @@ video {
                     <button class="delete-session-button" title="Delete session">🗑️</button>
                 </div>
             </div>
+
 
             <div class="session-item " data-session-id="d4e2166f-f284-47f7-85e6-f585e8252166">
                 <div class="session-content">
@@ -11988,7 +12001,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'step': "Step",
     'minute_abbr': "m",
     'second_abbr': "s",
-    'timer_zero': "0s"
+    'timer_zero': "0s",
+    'scheduler_chat_reminder': "\ud83d\udd14 Scheduler: reminders",
+    'scheduler_chat_action': "\u2699\ufe0f Scheduler: actions"
 });
 window.CURRENT_LANG = 'en';
 
@@ -12164,6 +12179,26 @@ function closeImageModal() {
 <\/script>
 <script>// app/static/js/chat-sessions.js
 // Session management functions
+
+let sessionsReloadPending = false;
+
+// A scheduler chat is created on the server the first time it delivers something, so the
+// sidebar has no row for it: the reminder arrived, the popup closed, and the chat stayed
+// invisible until a manual refresh. Reload the list once per burst, not once per message.
+function reloadSessionsForIncomingMessage() {
+    if (sessionsReloadPending || typeof loadSessionsFromServer !== 'function') return;
+    sessionsReloadPending = true;
+    Promise.resolve(loadSessionsFromServer()).finally(() => {
+        sessionsReloadPending = false;
+    });
+}
+
+// A title that already carries its own mark — the scheduler's 🔔/⚙️ — keeps it.
+// Prefixing 📝 there reads as two icons for one thing ("📝 🔔 Планировщик").
+function sessionTitleMark(title) {
+    const text = String(title || '');
+    return /^\p{Extended_Pictographic}/u.test(text) ? '' : '📝 ';
+}
 
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
@@ -12367,7 +12402,7 @@ function updateSessionsList(sessions) {
         <div class="session-info">
             <div class="session-title">
                 ${ttsIcon}${statusIcons}
-                📝 ${escapeHtml(s.title)}
+                ${sessionTitleMark(s.title)}${escapeHtml(s.title)}
             </div>
             <div class="session-date">📅 ${dateStr} [${s.message_count}]${sessionTokenStatsHTML(s.total_prompt_tokens, s.total_completion_tokens)}</div>
         </div>
@@ -12478,7 +12513,7 @@ function updateSessionTitle(sessionId, newTitle) {
     const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
     if (!sessionItem) return;
     const titleElement = sessionItem.querySelector('.session-title');
-    if (titleElement) titleElement.innerHTML = '📝 ' + escapeHtml(newTitle);
+    if (titleElement) titleElement.innerHTML = sessionTitleMark(newTitle) + escapeHtml(newTitle);
     const now = new Date();
     const formattedDate = formatFullDateTime(now.toISOString());
     const dateElement = sessionItem.querySelector('.session-date');
@@ -16947,7 +16982,8 @@ function loadMessages(sessionId) {
                             msg.completion_tokens,
                             msg.file_size,
                             msg.model_type,
-                            msg.prompt_tokens
+                            msg.prompt_tokens,
+                            msg.scheduler_kind
                         );
                         lastUserMessage = null;
                         }
@@ -17026,7 +17062,7 @@ function wrapBareHtmlDocument(text) {
     return fence + 'html\n' + text.trim() + '\n' + fence;
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens, schedulerKind) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -17197,7 +17233,12 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         // header — no ⏱️/🚀/🤖 decorations.
         const isSystemError = modelName === 'system';
 
-        if (modelName) {
+        if (schedulerKind) {
+            // A scheduler message was not generated by a model in this chat: naming the
+            // chat that delivered it is the honest header, and it matches the sidebar.
+            const label = schedulerKind === 'action' ? t('scheduler_chat_action') : t('scheduler_chat_reminder');
+            headerExtraHTML += ' <span class="text-muted message-scheduler-label">| ' + escapeHtml(label) + '</span>';
+        } else if (modelName) {
             const shortModel = (modelName.split('/').pop() || modelName).replace(/\.gguf$/i, '');
             const emoji = getModelEmoji(modelType);
             headerExtraHTML += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
@@ -20299,6 +20340,12 @@ function onMessageNew(data) {
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {
         setNewMessageIndicator(data.session_id, true);
+        // A chat the sidebar has never seen (the scheduler's, created on first delivery)
+        // must appear now: the flag above is remembered per id and the reload picks it up.
+        if (typeof sessionsData !== 'undefined' && !sessionsData[data.session_id]
+            && typeof reloadSessionsForIncomingMessage === 'function') {
+            reloadSessionsForIncomingMessage();
+        }
         return;
     }
     if (displayedMessageIds.has(data.message_id)) {
@@ -20371,7 +20418,8 @@ function onMessageNew(data) {
                     msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                     msg.timestamp, responseTime, msg.model_name,
                     msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                    msg.scheduler_kind
                 );
             }
             if (sessionsData[data.session_id]) {
@@ -20409,7 +20457,8 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens,
+                        msg.scheduler_kind
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -21682,10 +21731,10 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens, schedulerKind) {
     if (window.IS_RELOADING) return;
 
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens, schedulerKind);
 
     const messages = document.getElementById('chat-messages');
     if (messages) {

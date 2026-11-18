@@ -26,10 +26,11 @@
         <!-- Sessions list (visible by default) -->
         <div class="sessions-list" id="sessions-list">
             {% for s in sessions %}
+            {% set title_mark = '' if s.title[:1] in ('🔔', '⚙️') else '📝 ' %}
             <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
                 <div class="session-content">
                     <div class="session-info">
-                        <div class="session-title">📝 {{ s.title }}</div>
+                        <div class="session-title">{{ title_mark }}{{ s.title }}</div>
                         <div class="session-date">📅 {{ s.updated_at[:19].replace('T', ' ') }} [{{ s.message_count }}]</div>
                     </div>
                     <button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
@@ -484,7 +485,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'step': {{ _('Step')|tojson }},
     'minute_abbr': {{ _('minute_abbr')|tojson }},
     'second_abbr': {{ _('second_abbr')|tojson }},
-    'timer_zero': {{ _('timer_zero')|tojson }}
+    'timer_zero': {{ _('timer_zero')|tojson }},
+    'scheduler_chat_reminder': {{ _('🔔 Scheduler: reminders')|tojson }},
+    'scheduler_chat_action': {{ _('⚙️ Scheduler: actions')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 {% if config.get('DEBUG_TRANSLATIONS') %}

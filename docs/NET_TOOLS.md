@@ -67,6 +67,33 @@ explain itself, and the model would answer the question from its own knowledge i
 The check runs when the tool is called, not when the catalogue is built, so a flag that
 was just switched on takes effect on the next message.
 
+## How a request reaches a tool
+
+The router decides, and it has to be told that a network check is ordinary chat rather than
+a lookup. Measured on the live instance before the fix: «measure the speed to `<host>`» went
+to web search with the kernel on (the intent won, and the search path offers no tools) and to
+`[-REASONING-]` with it off (the marker router read the request as a complex task). In both
+cases the model answered «I have no access to network tools», which was true of the request
+it received.
+
+Two rules close it, and both are injected only while the sidecar answers `/health`:
+
+- **kernel** (`KERNEL_ENABLED=1`) — a network question *and a request to measure or check
+  one* is intent `none` plus the matching tool. Measured after the change: «measure the
+  speed», «check the ping», «who owns the domain», «which ports are open» → `none` with
+  `net_speed` / `net_ping` / `net_whois` / `net_ports`, while the weather still goes to
+  search.
+- **marker router** (`KERNEL_ENABLED=0`, the default) — category 12, `[-NET-]`. Additions to
+  the prose of categories 6 and 8 were measured and did not move the decision; a category of
+  its own does, in both languages and on repeated runs. `[-NET-]` maps to ordinary chat and
+  keeps the **whole** request as the query, because the chat model chooses the tool from the
+  user's words — the target alone says nothing about what to do with it.
+
+`net_speed` is the one tool whose output is only a measurement: a non-zero exit means no
+measurement happened and the result carries `⚠️ `, whereas `ping`'s exit code 1 *is* the
+answer («100 % packet loss»). A failed connection attempt is bounded at five seconds, so a
+host without an iperf3 server answers in five instead of holding the request open.
+
 ## The tools, and their limits
 
 One host per call. The one exception is `net_ports` with a network, which runs **host

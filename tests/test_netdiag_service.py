@@ -125,3 +125,44 @@ def test_the_container_ceiling_matches_the_application(netdiag):
     assert set(netdiag.DEFAULT_TIMEOUT) == set(client.TOOL_TIMEOUTS)
     for tool, limit in client.TOOL_TIMEOUTS.items():
         assert netdiag.DEFAULT_TIMEOUT[tool] <= limit, tool
+
+
+class _Failed:
+    """An iperf3 run that never got a session: it prints an error and exits non-zero."""
+
+    returncode = 1
+    stdout = "Connecting to host example.com, port 5201\n"
+    stderr = "iperf3: error - unable to connect to server: Connection refused\n"
+
+
+def test_a_speed_run_that_cannot_connect_is_a_failure(netdiag, monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Failed())
+
+    ok, text = netdiag.execute("speed", {"host": "example.com", "seconds": 1})
+
+    assert ok is False
+    assert "unable to connect" in text
+
+
+def test_a_ping_with_no_reply_is_still_an_answer(netdiag, monkeypatch):
+    """100% packet loss is the result, not a broken tool: its exit code must not fail it."""
+
+    class _NoReply(_Failed):
+        stdout = "1 packets transmitted, 0 received, 100% packet loss, time 0ms\n"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _NoReply())
+
+    ok, text = netdiag.execute("ping", {"host": "example.com", "count": 1, "timeout": 5})
+
+    assert ok is True
+    assert "100% packet loss" in text
+
+
+def test_speed_does_not_wait_out_the_whole_timeout_to_connect(netdiag, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: seen.update({"args": a[0]}) or _Done())
+
+    netdiag.run("speed", {"host": "example.com", "seconds": 1})
+
+    assert "--connect-timeout" in seen["args"]

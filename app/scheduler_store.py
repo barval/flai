@@ -70,18 +70,27 @@ def list_items(user_id: str) -> list[dict]:
         return [dict(r) for r in c.fetchall()]
 
 
-def due_items(moment: datetime, limit: int = 200) -> list[dict]:
-    """Enabled items whose time has come, oldest first, capped."""
+def due_items(moment: datetime, limit: int = 200, action_lead_minutes: int = 0) -> list[dict]:
+    """Enabled items whose time has come, oldest first, capped.
+
+    A reminder fires at its moment. An action is enqueued ``action_lead_minutes``
+    ahead: a task has to queue, wait for the GPU and run, so starting it exactly on
+    the minute would deliver everything late by design.
+    """
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """
             SELECT * FROM scheduler_items
-            WHERE enabled AND next_run_at IS NOT NULL AND next_run_at <= %s
+            WHERE enabled AND next_run_at IS NOT NULL
+              AND (
+                    (kind = 'reminder' AND next_run_at <= %s)
+                 OR (kind = 'action' AND next_run_at <= %s + make_interval(mins => %s))
+              )
             ORDER BY next_run_at ASC
             LIMIT %s
             """,
-            (moment, limit),
+            (moment, moment, int(action_lead_minutes), limit),
         )
         return [dict(r) for r in c.fetchall()]
 

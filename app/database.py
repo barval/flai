@@ -1193,6 +1193,18 @@ def _init_postgresql():
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
+
+    # v13.5: a scheduled action is a task with a due time. The result is held until
+    # scheduler_deliver_at even when it finished early, and scheduler_delivered_at
+    # records that the message went out — polling covers every ending the engine has
+    # (completed, failed, expired, cancelled) without a hook on each.
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_item_id UUID")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_deliver_at TIMESTAMPTZ")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduler_delivered_at TIMESTAMPTZ")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_scheduler ON tasks (scheduler_deliver_at)"
+        " WHERE scheduler_item_id IS NOT NULL AND scheduler_delivered_at IS NULL"
+    )
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 09:08+0300\n"
+"POT-Creation-Date: 2026-11-18 09:22+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -80,7 +80,7 @@ msgid "Each content part must be an object"
 msgstr "Each content part must be an object"
 
 #: app/api_bridge.py:508 app/routes/api_v1.py:666 app/routes/messages.py:167
-#: app/routes/tasks.py:105 app/templates/chat.html:265
+#: app/routes/tasks.py:105 app/templates/chat.html:284
 msgid "max_images_reached"
 msgstr "Maximum {max} images per message"
 
@@ -116,7 +116,7 @@ msgstr "Task %s returned no vectors"
 
 #: app/db.py:249 app/db.py:277 app/routes/api_v1.py:1609
 #: app/routes/sessions.py:156 app/routes/sessions.py:230
-#: app/templates/chat.html:21 app/templates/chat.html:189
+#: app/templates/chat.html:21 app/templates/chat.html:208
 msgid "New session"
 msgstr "New session"
 
@@ -199,7 +199,7 @@ msgstr "Could not connect to llama-server"
 #: app/llamacpp_client.py:1194 app/llamacpp_client.py:1476
 #: app/routes/admin.py:659 app/routes/admin.py:1339 app/routes/admin.py:1781
 #: app/routes/admin.py:1854 app/routes/admin.py:2108
-#: app/templates/admin.html:643 app/templates/chat.html:248 modules/cam.py:520
+#: app/templates/admin.html:643 app/templates/chat.html:267 modules/cam.py:520
 #: modules/sd_cpp.py:354 modules/sd_cpp.py:555 modules/video.py:828
 msgid "Error"
 msgstr "Error"
@@ -230,7 +230,7 @@ msgstr "Request cancelled - too long in queue ({queue_time:.1f}s)"
 
 #: app/queue.py:1103 app/queue.py:6427 app/queue.py:6430 app/queue.py:7064
 #: app/queue.py:7210 app/tasks/audio_transcribe.py:200
-#: app/templates/chat.html:180
+#: app/templates/chat.html:199
 msgid "Failed to recognize speech"
 msgstr "Failed to recognize speech"
 
@@ -298,7 +298,7 @@ msgstr "GPU memory check failed. Please try again."
 msgid "Reference examples (draw something similar):"
 msgstr "Reference examples (draw something similar):"
 
-#: app/queue.py:2376 app/templates/chat.html:186
+#: app/queue.py:2376 app/templates/chat.html:205
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Image generated from request: {query}"
@@ -320,7 +320,7 @@ msgstr "Reasoning request"
 msgid "Studying the site…"
 msgstr "Studying the site…"
 
-#: app/queue.py:2654 app/templates/admin.html:714 app/templates/chat.html:133
+#: app/queue.py:2654 app/templates/admin.html:714 app/templates/chat.html:152
 #: app/tool_registry.py:180 app/tool_registry.py:181
 msgid "Deep analysis"
 msgstr "Deep analysis"
@@ -486,7 +486,7 @@ msgstr ""
 "Request: {request}"
 
 #: app/queue.py:3957 app/queue.py:4182 app/queue.py:4353
-#: app/templates/chat.html:187
+#: app/templates/chat.html:206
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Camera snapshot: {room_name}"
@@ -623,12 +623,12 @@ msgid "Invalid image"
 msgstr "Invalid image"
 
 #: app/queue.py:7082 app/queue.py:7200 app/routes/tasks.py:502
-#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:185
+#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:204
 msgid "Transcribed"
 msgstr "Transcribed"
 
 #: app/queue.py:7097 app/queue.py:7229 app/routes/messages.py:480
-#: app/templates/chat.html:181
+#: app/templates/chat.html:200
 msgid "Voice request"
 msgstr "Voice request"
 
@@ -666,7 +666,7 @@ msgstr ""
 "OCR time budget reached: recognized the first {pages} of {total} pages. "
 "They are being indexed now."
 
-#: app/queue.py:7839 app/templates/chat.html:188
+#: app/queue.py:7839 app/templates/chat.html:207
 msgid "Unknown session"
 msgstr "Unknown session"
 
@@ -677,6 +677,31 @@ msgstr "⚙️ Scheduler: actions"
 #: app/scheduler.py:135
 msgid "🔔 Scheduler: reminders"
 msgstr "🔔 Scheduler: reminders"
+
+#: app/scheduler.py:378
+msgid "The action could not run in time"
+msgstr "The action could not run in time"
+
+#: app/scheduler.py:382
+msgid "The action finished without an answer"
+msgstr "The action finished without an answer"
+
+#: app/scheduler.py:384
+msgid "The action was cancelled"
+msgstr "The action was cancelled"
+
+#: app/scheduler.py:386
+msgid "The action ran out of time"
+msgstr "The action ran out of time"
+
+#: app/scheduler.py:388
+msgid "The action failed"
+msgstr "The action failed"
+
+#: app/scheduler.py:395
+#, python-brace-format
+msgid "Finished at {at} instead of {target}"
+msgstr "Finished at {at} instead of {target}"
 
 #: app/tool_registry.py:52
 msgid "Reasoning model"
@@ -1462,7 +1487,7 @@ msgstr "A bundled skill lives in the project and cannot be deleted"
 #: app/routes/tasks.py:824 app/routes/tasks.py:870 app/routes/tasks.py:968
 #: app/routes/tasks.py:978 app/routes/tasks.py:1151 app/routes/tasks.py:1173
 #: app/routes/tasks.py:1210 app/routes/tasks.py:1255 app/routes/tts.py:13
-#: app/templates/chat.html:178 modules/cam.py:544 modules/cam.py:550
+#: app/templates/chat.html:197 modules/cam.py:544 modules/cam.py:550
 #: modules/cam.py:558 modules/cam.py:578
 msgid "Not authorized"
 msgstr "Not authorized"
@@ -1711,7 +1736,7 @@ msgstr "'doc_ids' must be a list of strings"
 #: app/routes/api_v1.py:1650 app/routes/api_v1.py:1657
 #: app/routes/messages.py:53 app/routes/rlm.py:97 app/routes/sessions.py:119
 #: app/routes/sessions.py:153 app/routes/sessions.py:205
-#: app/routes/sessions.py:221 app/templates/chat.html:193
+#: app/routes/sessions.py:221 app/templates/chat.html:212
 msgid "Session not found"
 msgstr "Session not found"
 
@@ -1818,7 +1843,7 @@ msgid "Maximum file size {max_size} MB"
 msgstr "Maximum file size {max_size} MB"
 
 #: app/routes/documents.py:470 app/routes/documents.py:520
-#: app/templates/chat.html:192
+#: app/templates/chat.html:211
 msgid "Permission denied"
 msgstr "Permission denied"
 
@@ -1827,7 +1852,7 @@ msgid "Could not read the document"
 msgstr "⚠️ Could not read the document"
 
 #: app/routes/documents.py:608 app/routes/documents.py:636
-#: app/routes/documents.py:667 app/templates/chat.html:232
+#: app/routes/documents.py:667 app/templates/chat.html:251
 msgid "Preview is not available for this format"
 msgstr "Preview is not available for this format"
 
@@ -1868,11 +1893,11 @@ msgid "Multiple documents are not supported in one message"
 msgstr "Multiple documents are not supported in one message"
 
 #: app/routes/messages.py:224 app/routes/tasks.py:220
-#: app/templates/chat.html:266
+#: app/templates/chat.html:285
 msgid "max_audio_reached"
 msgstr "At most {max} audio items per message (a voice message counts as one)"
 
-#: app/routes/messages.py:236 app/templates/chat.html:179
+#: app/routes/messages.py:236 app/templates/chat.html:198
 msgid "Empty message"
 msgstr "Empty message"
 
@@ -1886,13 +1911,13 @@ msgid "The image has been reduced."
 msgstr "The image has been reduced."
 
 #: app/routes/messages.py:509 app/routes/messages.py:573
-#: app/templates/chat.html:183
+#: app/templates/chat.html:202
 #, python-brace-format
 msgid "Request queued (position {pos})"
 msgstr "Request queued (position {pos})"
 
 #: app/routes/messages.py:540 app/routes/messages.py:554
-#: app/templates/chat.html:292
+#: app/templates/chat.html:311
 msgid "Text request"
 msgstr "Text request"
 
@@ -1956,7 +1981,7 @@ msgstr "Session not found or access denied"
 msgid "Permission denied or session not found"
 msgstr "Permission denied or session not found"
 
-#: app/routes/sessions.py:217 app/templates/chat.html:194
+#: app/routes/sessions.py:217 app/templates/chat.html:213
 msgid "No active session"
 msgstr "No active session"
 
@@ -2389,20 +2414,20 @@ msgstr "Storage"
 
 #: app/templates/admin.html:77 app/templates/admin.html:180
 #: app/templates/admin.html:660 app/templates/admin.html:1079
-#: app/templates/chat.html:20 app/templates/chat.html:197
+#: app/templates/chat.html:20 app/templates/chat.html:216
 msgid "Sessions"
 msgstr "Sessions"
 
 # Tasks subsystem (v12.6): Tasks panel UI (chat.html, chat-tasks.js)
 #: app/templates/admin.html:78 app/templates/admin.html:196
 #: app/templates/admin.html:710 app/templates/admin.html:1080
-#: app/templates/chat.html:15 app/templates/chat.html:199
+#: app/templates/chat.html:15 app/templates/chat.html:218
 msgid "Tasks"
 msgstr "Tasks"
 
 #: app/templates/admin.html:81 app/templates/admin.html:188
 #: app/templates/admin.html:661 app/templates/admin.html:1083
-#: app/templates/chat.html:69 app/templates/chat.html:246
+#: app/templates/chat.html:69 app/templates/chat.html:265
 msgid "Messages"
 msgstr "Messages"
 
@@ -2535,8 +2560,8 @@ msgstr ""
 
 #: app/templates/admin.html:236 app/templates/admin.html:663
 #: app/templates/admin.html:1085 app/templates/chat.html:9
-#: app/templates/chat.html:198 app/templates/chat.html:383
-#: app/templates/chat.html:496
+#: app/templates/chat.html:217 app/templates/chat.html:402
+#: app/templates/chat.html:516
 msgid "Documents"
 msgstr "Documents"
 
@@ -2607,7 +2632,7 @@ msgstr "Threshold (reasoning)"
 #: app/templates/admin.html:304 app/templates/admin.html:446
 #: app/templates/admin.html:620 app/templates/admin.html:649
 #: app/templates/admin.html:977 app/templates/chat.html:73
-#: app/templates/chat.html:313
+#: app/templates/chat.html:332
 msgid "Save"
 msgstr "Save"
 
@@ -2697,7 +2722,7 @@ msgid "Allowed tools"
 msgstr "Allowed tools"
 
 #: app/templates/admin.html:383 app/templates/admin.html:941
-#: app/templates/chat.html:54 app/templates/chat.html:196
+#: app/templates/chat.html:54 app/templates/chat.html:215
 msgid "Chat"
 msgstr "Chat"
 
@@ -2763,7 +2788,7 @@ msgid "Russian body (optional)"
 msgstr "Russian body (optional)"
 
 #: app/templates/admin.html:447 app/templates/admin.html:650
-#: app/templates/admin.html:1108 app/templates/chat.html:311
+#: app/templates/admin.html:1108 app/templates/chat.html:330
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -2907,7 +2932,7 @@ msgid "Leave all unchecked to deny access to all cameras."
 msgstr "Leave all unchecked to deny access to all cameras."
 
 #: app/templates/admin.html:602 app/templates/admin.html:668
-#: app/templates/chat.html:312
+#: app/templates/chat.html:331
 msgid "Create"
 msgstr "Create"
 
@@ -2961,7 +2986,7 @@ msgstr "Delete"
 msgid "Delete user"
 msgstr "Delete user"
 
-#: app/templates/admin.html:676 app/templates/chat.html:269
+#: app/templates/admin.html:676 app/templates/chat.html:288
 msgid "unknown_error"
 msgstr "Unknown error"
 
@@ -3610,8 +3635,8 @@ msgstr "Side limit when several images are attached"
 msgid "Maximum accepted image width"
 msgstr "Maximum accepted image width"
 
-#: app/templates/admin.html:841 app/templates/chat.html:333
-#: app/templates/chat.html:494
+#: app/templates/admin.html:841 app/templates/chat.html:352
+#: app/templates/chat.html:514
 msgid "Knowledge graph"
 msgstr "Knowledge graph"
 
@@ -3988,7 +4013,7 @@ msgstr "Embedding"
 msgid "-- Select model --"
 msgstr "-- Select model --"
 
-#: app/templates/admin.html:946 app/templates/chat.html:174
+#: app/templates/admin.html:946 app/templates/chat.html:193
 msgid "Loading..."
 msgstr "Loading..."
 
@@ -4670,44 +4695,44 @@ msgstr "Created"
 msgid "api_keys_col_last_used"
 msgstr "Last used"
 
-#: app/templates/base.html:164 app/templates/chat.html:288
+#: app/templates/base.html:164 app/templates/chat.html:307
 msgid "footer_about_hint"
 msgstr "About"
 
-#: app/templates/base.html:165 app/templates/chat.html:287
+#: app/templates/base.html:165 app/templates/chat.html:306
 msgid "footer_short_name"
 msgstr "FLAI"
 
 #: app/templates/base.html:173 app/templates/chat.html:97
-#: app/templates/chat.html:289
+#: app/templates/chat.html:308
 msgid "close_about"
 msgstr "Close"
 
-#: app/templates/base.html:175 app/templates/chat.html:285
+#: app/templates/base.html:175 app/templates/chat.html:304
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI)"
 
-#: app/templates/base.html:178 app/templates/chat.html:286
+#: app/templates/base.html:178 app/templates/chat.html:305
 msgid "footer_copyright"
 msgstr "(c) 2026 Valery Barsukov"
 
-#: app/templates/chat.html:10 app/templates/chat.html:301
+#: app/templates/chat.html:10 app/templates/chat.html:320
 msgid "New document"
 msgstr "New document"
 
-#: app/templates/chat.html:11 app/templates/chat.html:307
+#: app/templates/chat.html:11 app/templates/chat.html:326
 msgid "New folder"
 msgstr "New folder"
 
-#: app/templates/chat.html:16 app/templates/chat.html:200
+#: app/templates/chat.html:16 app/templates/chat.html:219
 msgid "New task"
 msgstr "New task"
 
-#: app/templates/chat.html:35 app/templates/chat.html:190
+#: app/templates/chat.html:35 app/templates/chat.html:209
 msgid "Delete session"
 msgstr "Delete session"
 
-#: app/templates/chat.html:54 app/templates/chat.html:201
+#: app/templates/chat.html:54 app/templates/chat.html:220
 msgid "Task"
 msgstr "Task"
 
@@ -4715,848 +4740,849 @@ msgstr "Task"
 msgid "Your requests / Total requests"
 msgstr "Your requests / Total requests"
 
-#: app/templates/chat.html:54 app/templates/chat.html:406
+#: app/templates/chat.html:54 app/templates/chat.html:425
 msgid "response_style_label"
 msgstr "Style"
 
-#: app/templates/chat.html:56 app/templates/chat.html:405
+#: app/templates/chat.html:56 app/templates/chat.html:424
 msgid "response_style_title"
 msgstr "Response style"
 
-#: app/templates/chat.html:61 app/templates/chat.html:407
+#: app/templates/chat.html:61 app/templates/chat.html:426
 msgid "response_style_neutral"
 msgstr "Neutral"
 
-#: app/templates/chat.html:62 app/templates/chat.html:408
+#: app/templates/chat.html:62 app/templates/chat.html:427
 msgid "response_style_academic"
 msgstr "Academic"
 
-#: app/templates/chat.html:63 app/templates/chat.html:409
+#: app/templates/chat.html:63 app/templates/chat.html:428
 msgid "response_style_professional"
 msgstr "Professional"
 
-#: app/templates/chat.html:64 app/templates/chat.html:410
+#: app/templates/chat.html:64 app/templates/chat.html:429
 msgid "response_style_friendly"
 msgstr "Friendly"
 
-#: app/templates/chat.html:65 app/templates/chat.html:411
+#: app/templates/chat.html:65 app/templates/chat.html:430
 msgid "response_style_funny"
 msgstr "Funny"
 
-#: app/templates/chat.html:70 app/templates/chat.html:204
+#: app/templates/chat.html:70 app/templates/chat.html:223
 msgid "Stop task"
 msgstr "Stop task"
 
-#: app/templates/chat.html:71 app/templates/chat.html:413
+#: app/templates/chat.html:71 app/templates/chat.html:432
 msgid "stop_generating"
 msgstr "Stop generating"
 
-#: app/templates/chat.html:72 app/templates/chat.html:195
+#: app/templates/chat.html:72 app/templates/chat.html:214
 msgid "Save as HTML"
 msgstr "Save as HTML"
 
-#: app/templates/chat.html:99 app/templates/chat.html:308
+#: app/templates/chat.html:99 app/templates/chat.html:327
 msgid "Enter folder name"
 msgstr "Enter folder name"
 
-#: app/templates/chat.html:116 app/templates/chat.html:160
+#: app/templates/chat.html:119 app/templates/chat.html:123
+#: app/templates/chat.html:363 app/templates/chat.html:413
+msgid "Close"
+msgstr "Close"
+
+#: app/templates/chat.html:135 app/templates/chat.html:179
 msgid "Search scope"
 msgstr "Search scope"
 
-#: app/templates/chat.html:116 app/templates/chat.html:161
+#: app/templates/chat.html:135 app/templates/chat.html:180
 msgid "All documents"
 msgstr "All documents"
 
-#: app/templates/chat.html:119 app/templates/chat.html:163
+#: app/templates/chat.html:138 app/templates/chat.html:182
 msgid "Folders"
 msgstr "Folders"
 
-#: app/templates/chat.html:122 app/templates/chat.html:168
+#: app/templates/chat.html:141 app/templates/chat.html:187
 msgid "Uploaded from"
 msgstr "Uploaded from"
 
-#: app/templates/chat.html:125 app/templates/chat.html:169
+#: app/templates/chat.html:144 app/templates/chat.html:188
 msgid "Uploaded to"
 msgstr "Uploaded to"
 
-#: app/templates/chat.html:129 app/templates/chat.html:171
+#: app/templates/chat.html:148 app/templates/chat.html:190
 msgid "Clear"
 msgstr "Clear"
 
-#: app/templates/chat.html:133
+#: app/templates/chat.html:152
 msgid "Select documents"
 msgstr "Select documents"
 
-#: app/templates/chat.html:136
+#: app/templates/chat.html:155
 msgid "Enter message..."
 msgstr "Enter message..."
 
-#: app/templates/chat.html:137 app/templates/chat.html:293
+#: app/templates/chat.html:156 app/templates/chat.html:312
 msgid "Record voice message"
 msgstr "Record voice message"
 
-#: app/templates/chat.html:140 app/templates/chat.html:175
+#: app/templates/chat.html:159 app/templates/chat.html:194
 msgid "Send"
 msgstr "Send"
 
-#: app/templates/chat.html:141
+#: app/templates/chat.html:160
 msgid "Restart task"
 msgstr "Restart task"
 
-#: app/templates/chat.html:162
+#: app/templates/chat.html:181
 msgid "Folder"
 msgstr "Folder"
 
-#: app/templates/chat.html:164
+#: app/templates/chat.html:183
 #, python-brace-format
 msgid "folders ({count})"
 msgstr "folders ({count})"
 
-#: app/templates/chat.html:165
+#: app/templates/chat.html:184
 #, python-brace-format
 msgid "documents ({count})"
 msgstr "documents ({count})"
 
-#: app/templates/chat.html:166
+#: app/templates/chat.html:185
 msgid "No documents match the selected folders and dates."
 msgstr "No documents match the selected folders and dates."
 
-#: app/templates/chat.html:167
+#: app/templates/chat.html:186
 msgid "Select at least one folder."
 msgstr "Select at least one folder."
 
-#: app/templates/chat.html:170
+#: app/templates/chat.html:189
 msgid "Apply"
 msgstr "Apply"
 
-#: app/templates/chat.html:172
+#: app/templates/chat.html:191
 msgid "Unfiled"
 msgstr "Unfiled"
 
-#: app/templates/chat.html:176
+#: app/templates/chat.html:195
 msgid "Sending..."
 msgstr "Sending..."
 
-#: app/templates/chat.html:177
+#: app/templates/chat.html:196
 msgid "Recording..."
 msgstr "Recording..."
 
-#: app/templates/chat.html:182
+#: app/templates/chat.html:201
 msgid "Audio transcribed"
 msgstr "Audio transcribed"
 
-#: app/templates/chat.html:184
+#: app/templates/chat.html:203
 #, python-brace-format
 msgid "Speech recognized, request queued (position {pos})"
 msgstr "Speech recognized, request queued (position {pos})"
 
-#: app/templates/chat.html:191
+#: app/templates/chat.html:210
 #, python-brace-format
 msgid "Delete session {title} from {date}?"
 msgstr "Delete session {title} from {date}?"
 
-#: app/templates/chat.html:202
+#: app/templates/chat.html:221
 msgid "Task request"
 msgstr "Task request"
 
-#: app/templates/chat.html:203
+#: app/templates/chat.html:222
 msgid "Create task"
 msgstr "Create task"
 
-#: app/templates/chat.html:205
+#: app/templates/chat.html:224
 msgid "Delete task"
 msgstr "Delete task"
 
-#: app/templates/chat.html:206
+#: app/templates/chat.html:225
 #, python-brace-format
 msgid "Delete task {title} from {date}?"
 msgstr "Delete task {title} from {date}?"
 
-#: app/templates/chat.html:207
+#: app/templates/chat.html:226
 #, python-brace-format
 msgid "Running (step {n} of {m})"
 msgstr "Running (step {n} of {m})"
 
-#: app/templates/chat.html:208
+#: app/templates/chat.html:227
 msgid "Running"
 msgstr "Running"
 
-#: app/templates/chat.html:209
+#: app/templates/chat.html:228
 msgid "Frozen"
 msgstr "Frozen"
 
-#: app/templates/chat.html:210
+#: app/templates/chat.html:229
 msgid "Transcribing audio…"
 msgstr "Transcribing audio…"
 
-#: app/templates/chat.html:211
+#: app/templates/chat.html:230
 msgid "Completed"
 msgstr "Completed"
 
-#: app/templates/chat.html:212
+#: app/templates/chat.html:231
 msgid "Cancelled"
 msgstr "Cancelled"
 
-#: app/templates/chat.html:213
+#: app/templates/chat.html:232
 msgid "Failed"
 msgstr "Failed"
 
-#: app/templates/chat.html:214
+#: app/templates/chat.html:233
 msgid "Expired"
 msgstr "Expired"
 
-#: app/templates/chat.html:215
+#: app/templates/chat.html:234
 msgid "Awaiting answer"
 msgstr "Awaiting answer"
 
-#: app/templates/chat.html:216
+#: app/templates/chat.html:235
 msgid "Checked automatically"
 msgstr "Checked automatically"
 
-#: app/templates/chat.html:217
+#: app/templates/chat.html:236
 #, python-brace-format
 msgid "Redone ×{n}"
 msgstr "Redone ×{n}"
 
-#: app/templates/chat.html:218
+#: app/templates/chat.html:237
 #, python-brace-format
 msgid "Retrying (attempt {n} of {max})"
 msgstr "Retrying (attempt {n} of {max})"
 
-#: app/templates/chat.html:219
+#: app/templates/chat.html:238
 #, python-brace-format
 msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
 msgstr "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
 
-#: app/templates/chat.html:220
+#: app/templates/chat.html:239
 #, python-brace-format
 msgid "Redoing after the check (attempt {n} of {max})"
 msgstr "Redoing after the check (attempt {n} of {max})"
 
-#: app/templates/chat.html:221
+#: app/templates/chat.html:240
 #, python-brace-format
 msgid "Redone after the check: {reason}"
 msgstr "Redone after the check: {reason}"
 
-#: app/templates/chat.html:222
+#: app/templates/chat.html:241
 msgid "Not delivered"
 msgstr "Not delivered"
 
-#: app/templates/chat.html:223
+#: app/templates/chat.html:242
 msgid "Skipped"
 msgstr "Skipped"
 
-#: app/templates/chat.html:224
+#: app/templates/chat.html:243
 msgid "Interrupted"
 msgstr "Interrupted"
 
-#: app/templates/chat.html:225
+#: app/templates/chat.html:244
 msgid "Not verified"
 msgstr "Not verified"
 
-#: app/templates/chat.html:226
+#: app/templates/chat.html:245
 msgid "Check skipped: could not describe the image"
 msgstr "Check skipped: could not describe the image"
 
-#: app/templates/chat.html:227
+#: app/templates/chat.html:246
 #, python-brace-format
 msgid "Verification attempts ({n})"
 msgstr "Verification attempts ({n})"
 
-#: app/templates/chat.html:228
+#: app/templates/chat.html:247
 #, python-brace-format
 msgid "Best of {n} attempts"
 msgstr "Best of {n} attempts"
 
-#: app/templates/chat.html:229
+#: app/templates/chat.html:248
 msgid "Kept the accepted image"
 msgstr "Kept the accepted image"
 
-#: app/templates/chat.html:230
+#: app/templates/chat.html:249
 #, python-brace-format
 msgid "Preview: {name}"
 msgstr "Preview: {name}"
 
-#: app/templates/chat.html:231
+#: app/templates/chat.html:250
 msgid "Extracted text"
 msgstr "Extracted text"
 
-#: app/templates/chat.html:233
+#: app/templates/chat.html:252
 msgid "Preview is truncated"
 msgstr "Preview is truncated"
 
-#: app/templates/chat.html:234
+#: app/templates/chat.html:253
 msgid "Could not load the document preview"
 msgstr "Could not load the document preview"
 
-#: app/templates/chat.html:235
+#: app/templates/chat.html:254
 msgid "Open PDF"
 msgstr "Open PDF"
 
-#: app/templates/chat.html:236
+#: app/templates/chat.html:255
 #, python-brace-format
 msgid "Showing the first {n} pages"
 msgstr "Showing the first {n} pages"
 
-#: app/templates/chat.html:237
+#: app/templates/chat.html:256
 #, python-brace-format
 msgid "attempt {n}"
 msgstr "attempt {n}"
 
-#: app/templates/chat.html:238
+#: app/templates/chat.html:257
 #, python-brace-format
 msgid "Accepted results: {n} (images: {images}, texts: {texts})"
 msgstr "Accepted results: {n} (images: {images}, texts: {texts})"
 
-#: app/templates/chat.html:239
+#: app/templates/chat.html:258
 msgid "Not delivered:"
 msgstr "Not delivered:"
 
-#: app/templates/chat.html:240
+#: app/templates/chat.html:259
 msgid "Answer the clarifying question…"
 msgstr "Answer the clarifying question…"
 
-#: app/templates/chat.html:241
+#: app/templates/chat.html:260
 msgid "Task is not awaiting an answer right now — status:"
 msgstr "Task is not awaiting an answer right now — status:"
 
-#: app/templates/chat.html:242
+#: app/templates/chat.html:261
 msgid "No tasks yet"
 msgstr "No tasks yet"
 
-#: app/templates/chat.html:243
+#: app/templates/chat.html:262
 msgid "Draft"
 msgstr "Draft"
 
-#: app/templates/chat.html:244
+#: app/templates/chat.html:263
 msgid "Draft — describe the task…"
 msgstr "Draft — describe the task…"
 
-#: app/templates/chat.html:245
+#: app/templates/chat.html:264
 msgid "No task selected — use «+» to create one"
 msgstr "No task selected — use «+» to create one"
 
-#: app/templates/chat.html:247
+#: app/templates/chat.html:266
 msgid "Your requests in queue / Total in queue"
 msgstr "Your requests in queue / Total in queue"
 
-#: app/templates/chat.html:249
+#: app/templates/chat.html:268
 msgid "Server error: received invalid response"
 msgstr "Server error: received invalid response"
 
-#: app/templates/chat.html:250
+#: app/templates/chat.html:269
 msgid "Warning"
 msgstr "Warning"
 
-#: app/templates/chat.html:251
+#: app/templates/chat.html:270
 msgid "Info"
 msgstr "Info"
 
-#: app/templates/chat.html:252
+#: app/templates/chat.html:271
 msgid "user"
 msgstr "User"
 
-#: app/templates/chat.html:253
+#: app/templates/chat.html:272
 msgid "session"
 msgstr "Session"
 
-#: app/templates/chat.html:254
+#: app/templates/chat.html:273
 msgid "saved_on"
 msgstr "Saved on"
 
-#: app/templates/chat.html:255
+#: app/templates/chat.html:274
 msgid "total_messages"
 msgstr "Total messages"
 
-#: app/templates/chat.html:256
+#: app/templates/chat.html:275
 msgid "speak"
 msgstr "Speak"
 
-#: app/templates/chat.html:257
+#: app/templates/chat.html:276
 msgid "stop"
 msgstr "Stop"
 
-#: app/templates/chat.html:258
+#: app/templates/chat.html:277
 msgid "download_image"
 msgstr "Download image"
 
-#: app/templates/chat.html:259
+#: app/templates/chat.html:278
 msgid "download_audio"
 msgstr "Download audio"
 
-#: app/templates/chat.html:260
+#: app/templates/chat.html:279
 msgid "download_video"
 msgstr "Download video"
 
-#: app/templates/chat.html:261
+#: app/templates/chat.html:280
 msgid "click_to_enlarge"
 msgstr "Click to enlarge"
 
-#: app/templates/chat.html:262
+#: app/templates/chat.html:281
 msgid "image"
 msgstr "image"
 
-#: app/templates/chat.html:263
+#: app/templates/chat.html:282
 msgid "enter_message_or_file"
 msgstr "Enter a message or attach a file"
 
-#: app/templates/chat.html:264
+#: app/templates/chat.html:283
 msgid "rlm_needs_documents"
 msgstr "Deep analysis needs at least one document or an image"
 
-#: app/templates/chat.html:267
+#: app/templates/chat.html:286
 msgid "remove_file"
 msgstr "Remove attachment"
 
-#: app/templates/chat.html:268
+#: app/templates/chat.html:287
 msgid "request_timeout"
 msgstr "Request timeout. Check request status."
 
-#: app/templates/chat.html:270
+#: app/templates/chat.html:289
 msgid "copied"
 msgstr "Copied!"
 
-#: app/templates/chat.html:271
+#: app/templates/chat.html:290
 msgid "copy_code"
 msgstr "Copy code"
 
-#: app/templates/chat.html:272
+#: app/templates/chat.html:291
 msgid "copy_failed"
 msgstr "Copy failed"
 
-#: app/templates/chat.html:273
+#: app/templates/chat.html:292
 msgid "copy_text"
 msgstr "Copy text"
 
-#: app/templates/chat.html:274
+#: app/templates/chat.html:293
 msgid "open_html"
 msgstr "Open HTML page"
 
-#: app/templates/chat.html:275
+#: app/templates/chat.html:294
 msgid "open_html_unavailable"
 msgstr ""
 "Preview is unavailable for this message. Save the code to a file and open"
 " it in a browser."
 
-#: app/templates/chat.html:276
+#: app/templates/chat.html:295
 msgid "processing"
 msgstr "processing"
 
-#: app/templates/chat.html:277
+#: app/templates/chat.html:296
 msgid "queued"
 msgstr "queued"
 
-#: app/templates/chat.html:278
+#: app/templates/chat.html:297
 msgid "new_response"
 msgstr "new response"
 
-#: app/templates/chat.html:279
+#: app/templates/chat.html:298
 msgid "browser_no_audio_support"
 msgstr "Your browser does not support audio recording"
 
-#: app/templates/chat.html:280
+#: app/templates/chat.html:299
 msgid "secure_context_required"
 msgstr ""
 "Voice recording requires a secure connection (HTTPS). Try opening the "
 "site via HTTPS or localhost."
 
-#: app/templates/chat.html:281
+#: app/templates/chat.html:300
 msgid "microphone_access_denied"
 msgstr "Could not access microphone."
 
-#: app/templates/chat.html:282
+#: app/templates/chat.html:301
 msgid "no_active_session_save"
 msgstr "No active session to save"
 
-#: app/templates/chat.html:283
+#: app/templates/chat.html:302
 msgid "saved_chat"
 msgstr "Saved chat"
 
-#: app/templates/chat.html:284
+#: app/templates/chat.html:303
 msgid "no_messages_to_save"
 msgstr "No messages to save"
 
-#: app/templates/chat.html:290
+#: app/templates/chat.html:309
 msgid "footer_not_configured"
 msgstr "Footer not configured"
 
-#: app/templates/chat.html:291
+#: app/templates/chat.html:310
 msgid "footer_load_error"
 msgstr "Error loading footer"
 
-#: app/templates/chat.html:294
+#: app/templates/chat.html:313
 msgid "seconds_suffix"
 msgstr " s"
 
-#: app/templates/chat.html:295
+#: app/templates/chat.html:314
 msgid "tps_suffix"
 msgstr " tok/s"
 
-#: app/templates/chat.html:296
+#: app/templates/chat.html:315
 msgid "tokens_unit"
 msgstr "tok"
 
-#: app/templates/chat.html:297
+#: app/templates/chat.html:316
 msgid "byte_abbr"
 msgstr "B"
 
-#: app/templates/chat.html:298
+#: app/templates/chat.html:317
 msgid "kb_abbr"
 msgstr "KB"
 
-#: app/templates/chat.html:299
+#: app/templates/chat.html:318
 msgid "mb_abbr"
 msgstr "MB"
 
-#: app/templates/chat.html:300
+#: app/templates/chat.html:319
 msgid "gb_abbr"
 msgstr "GB"
 
-#: app/templates/chat.html:302
+#: app/templates/chat.html:321
 msgid "Delete document"
 msgstr "Delete document"
 
-#: app/templates/chat.html:303
+#: app/templates/chat.html:322
 #, python-brace-format
 msgid "Delete document \"{filename}\"?"
 msgstr "Delete document \"{filename}\"?"
 
-#: app/templates/chat.html:304
+#: app/templates/chat.html:323
 msgid "Upload document"
 msgstr "Upload document"
 
-#: app/templates/chat.html:305
+#: app/templates/chat.html:324
 msgid "Document uploaded"
 msgstr "Document uploaded"
 
-#: app/templates/chat.html:306
+#: app/templates/chat.html:325
 msgid "Document upload failed"
 msgstr "Document upload failed"
 
-#: app/templates/chat.html:309
+#: app/templates/chat.html:328
 msgid "Create folder"
 msgstr "Create folder"
 
-#: app/templates/chat.html:310 app/templates/chat.html:314
+#: app/templates/chat.html:329 app/templates/chat.html:333
 msgid "Rename folder"
 msgstr "Rename folder"
 
-#: app/templates/chat.html:315
+#: app/templates/chat.html:334
 msgid "Delete folder"
 msgstr "Delete folder"
 
-#: app/templates/chat.html:316
+#: app/templates/chat.html:335
 msgid "Move to folder"
 msgstr "Move to folder"
 
-#: app/templates/chat.html:317
+#: app/templates/chat.html:336
 msgid "Clear selection"
 msgstr "Clear selection"
 
-#: app/templates/chat.html:318
+#: app/templates/chat.html:337
 msgid "Move to root"
 msgstr "Move to root"
 
-#: app/templates/chat.html:319
+#: app/templates/chat.html:338
 msgid "Delete selected documents"
 msgstr "Delete selected documents"
 
-#: app/templates/chat.html:320
+#: app/templates/chat.html:339
 #, python-brace-format
 msgid "Delete {count} selected documents ({size})?"
 msgstr "Delete {count} selected documents ({size})?"
 
-#: app/templates/chat.html:321
+#: app/templates/chat.html:340
 msgid "Failed to delete some documents"
 msgstr "Failed to delete some documents"
 
-#: app/templates/chat.html:322
+#: app/templates/chat.html:341
 #, python-brace-format
 msgid "Selected: {count} ({size})"
 msgstr "Selected: {count} ({size})"
 
-#: app/templates/chat.html:323
+#: app/templates/chat.html:342
 msgid "Select all documents in folder"
 msgstr "Select all documents in folder"
 
-#: app/templates/chat.html:324
+#: app/templates/chat.html:343
 msgid "Select for moving"
 msgstr "Select for moving"
 
-#: app/templates/chat.html:325
+#: app/templates/chat.html:344
 msgid "Generated"
 msgstr "Generated"
 
-#: app/templates/chat.html:326
+#: app/templates/chat.html:345
 msgid "Index"
 msgstr "Index"
 
-#: app/templates/chat.html:327
+#: app/templates/chat.html:346
 msgid "Index for search and graph"
 msgstr "Index for search and graph"
 
-#: app/templates/chat.html:328
+#: app/templates/chat.html:347
 msgid "index is outdated"
 msgstr "index is outdated"
 
-#: app/templates/chat.html:329
+#: app/templates/chat.html:348
 msgid "Crawled"
 msgstr "Crawled"
 
-#: app/templates/chat.html:330
+#: app/templates/chat.html:349
 msgid "From chat"
 msgstr "From chat"
 
-#: app/templates/chat.html:331
+#: app/templates/chat.html:350
 msgid "Select for deep analysis"
 msgstr "Select for deep analysis"
 
-#: app/templates/chat.html:332
+#: app/templates/chat.html:351
 msgid "View in knowledge graph"
 msgstr "View in knowledge graph"
 
-#: app/templates/chat.html:334
+#: app/templates/chat.html:353
 msgid "Click a node to inspect it"
 msgstr "Click a node to inspect it"
 
-#: app/templates/chat.html:335
+#: app/templates/chat.html:354
 msgid "Mentions"
 msgstr "Mentions"
 
-#: app/templates/chat.html:336 app/templates/chat.html:389
+#: app/templates/chat.html:355 app/templates/chat.html:408
 msgid "Shared by"
 msgstr "Shared by"
 
-#: app/templates/chat.html:337
+#: app/templates/chat.html:356
 msgid "Loading the graph"
 msgstr "Loading the graph"
 
-#: app/templates/chat.html:338
+#: app/templates/chat.html:357
 msgid "The graph could not be loaded"
 msgstr "The graph could not be loaded"
 
-#: app/templates/chat.html:339
+#: app/templates/chat.html:358
 msgid "The graph is still being built for these documents"
 msgstr "The graph is still being built for these documents"
 
-#: app/templates/chat.html:340
+#: app/templates/chat.html:359
 msgid "This browser cannot render the graph"
 msgstr "This browser cannot render the graph"
 
-#: app/templates/chat.html:341
+#: app/templates/chat.html:360
 msgid "Pick the second node of the path"
 msgstr "Pick the second node of the path"
 
-#: app/templates/chat.html:342 app/templates/chat.html:505
+#: app/templates/chat.html:361 app/templates/chat.html:525
 msgid "Clear path"
 msgstr "Clear path"
 
-#: app/templates/chat.html:343
+#: app/templates/chat.html:362
 msgid "No relations"
 msgstr "No relations"
 
-#: app/templates/chat.html:344 app/templates/chat.html:394
-msgid "Close"
-msgstr "Close"
-
-#: app/templates/chat.html:345
+#: app/templates/chat.html:364
 msgid "Path highlight cleared"
 msgstr "Path highlight cleared"
 
-#: app/templates/chat.html:346 app/templates/chat.html:499
+#: app/templates/chat.html:365 app/templates/chat.html:519
 msgid "Path"
 msgstr "Path"
 
-#: app/templates/chat.html:347
+#: app/templates/chat.html:366
 msgid "Cancel path"
 msgstr "Cancel path"
 
-#: app/templates/chat.html:348
+#: app/templates/chat.html:367
 msgid "Pick the first node of the path"
 msgstr "Choose the first node of the path"
 
-#: app/templates/chat.html:349
+#: app/templates/chat.html:368
 msgid "Stated relations"
 msgstr "Stated relations"
 
-#: app/templates/chat.html:350
+#: app/templates/chat.html:369
 msgid "Structural, no quote"
 msgstr "Structural, no quote"
 
-#: app/templates/chat.html:351
+#: app/templates/chat.html:370
 msgid "Merge into another node…"
 msgstr "Merge into another node…"
 
-#: app/templates/chat.html:352
+#: app/templates/chat.html:371
 msgid "Cancel merge"
 msgstr "Cancel merge"
 
-#: app/templates/chat.html:353
+#: app/templates/chat.html:372
 msgid "Pick the node it should be merged into"
 msgstr "Pick the node it should be merged into"
 
-#: app/templates/chat.html:354
+#: app/templates/chat.html:373
 #, python-brace-format
 msgid "Merge “{source}” into “{target}”? The first node disappears."
 msgstr "Merge “{source}” into “{target}”? The first node disappears."
 
-#: app/templates/chat.html:355
+#: app/templates/chat.html:374
 msgid "The nodes could not be merged"
 msgstr "The nodes could not be merged"
 
-#: app/templates/chat.html:356
+#: app/templates/chat.html:375
 msgid "Merge cancelled"
 msgstr "Merge cancelled"
 
-#: app/templates/chat.html:357
+#: app/templates/chat.html:376
 msgid "In one chunk"
 msgstr "In one chunk"
 
-#: app/templates/chat.html:358
+#: app/templates/chat.html:377
 msgid "Similar document"
 msgstr "Similar document"
 
-#: app/templates/chat.html:359
+#: app/templates/chat.html:378
 msgid "Supplies"
 msgstr "Supplies"
 
-#: app/templates/chat.html:360
+#: app/templates/chat.html:379
 msgid "Part of"
 msgstr "Part of"
 
-#: app/templates/chat.html:361
+#: app/templates/chat.html:380
 msgid "Works for"
 msgstr "Works for"
 
-#: app/templates/chat.html:362
+#: app/templates/chat.html:381
 msgid "Leads"
 msgstr "Leads"
 
-#: app/templates/chat.html:363
+#: app/templates/chat.html:382
 msgid "Signed"
 msgstr "Signed"
 
-#: app/templates/chat.html:364
+#: app/templates/chat.html:383
 msgid "Rents"
 msgstr "Rents"
 
-#: app/templates/chat.html:365
+#: app/templates/chat.html:384
 msgid "Maintains"
 msgstr "Maintains"
 
-#: app/templates/chat.html:366
+#: app/templates/chat.html:385
 msgid "Performs"
 msgstr "Performs"
 
-#: app/templates/chat.html:367
+#: app/templates/chat.html:386
 msgid "Forbids"
 msgstr "Forbids"
 
-#: app/templates/chat.html:368
+#: app/templates/chat.html:387
 msgid "Allows"
 msgstr "Allows"
 
-#: app/templates/chat.html:369
+#: app/templates/chat.html:388
 msgid "Located in"
 msgstr "Located in"
 
-#: app/templates/chat.html:370
+#: app/templates/chat.html:389
 msgid "Related to"
 msgstr "Related to"
 
-#: app/templates/chat.html:371
+#: app/templates/chat.html:390
 msgid "No relation path was found"
 msgstr "No relation path was found"
 
-#: app/templates/chat.html:372
+#: app/templates/chat.html:391
 msgid "Build the graph"
 msgstr "Build the graph"
 
-#: app/templates/chat.html:373
+#: app/templates/chat.html:392
 msgid "Building"
 msgstr "Building"
 
-#: app/templates/chat.html:374
+#: app/templates/chat.html:393
 msgid "Queued; the graph fills while the instance is idle"
 msgstr "Queued; the graph fills while the instance is idle"
 
-#: app/templates/chat.html:375
+#: app/templates/chat.html:394
 msgid "Knowledge graph of the document"
 msgstr "Knowledge graph of the document"
 
-#: app/templates/chat.html:376
+#: app/templates/chat.html:395
 #, python-brace-format
 msgid "shown {n} of {total} nodes · {m} links"
 msgstr "shown {n} of {total} nodes · {m} links"
 
-#: app/templates/chat.html:377
+#: app/templates/chat.html:396
 msgid "This browser does not provide WebGL — 2D mode"
 msgstr "This browser does not provide WebGL — 2D mode"
 
-#: app/templates/chat.html:378
+#: app/templates/chat.html:397
 #, python-brace-format
 msgid "3D is unavailable: {reason}"
 msgstr "3D is unavailable: {reason}"
 
-#: app/templates/chat.html:379
+#: app/templates/chat.html:398
 msgid "Switch between 2D and 3D"
 msgstr "Switch between 2D and 3D"
 
-#: app/templates/chat.html:380 app/templates/chat.html:497
+#: app/templates/chat.html:399 app/templates/chat.html:517
 msgid "Switch to 2D"
 msgstr "Switch to 2D"
 
-#: app/templates/chat.html:381
+#: app/templates/chat.html:400
 msgid "Switch to 3D"
 msgstr "Switch to 3D"
 
-#: app/templates/chat.html:382
+#: app/templates/chat.html:401
 msgid "Entities"
 msgstr "Entities"
 
-#: app/templates/chat.html:384 app/templates/chat.html:496
+#: app/templates/chat.html:403 app/templates/chat.html:516
 msgid "Switch to documents"
 msgstr "Switch to documents"
 
-#: app/templates/chat.html:385
+#: app/templates/chat.html:404
 msgid "Switch to entities"
 msgstr "Switch to entities"
 
-#: app/templates/chat.html:386
+#: app/templates/chat.html:405
 msgid "Open the browser console for details, or copy the line above."
 msgstr "Open the browser console for details, or copy the line above."
 
-#: app/templates/chat.html:387
+#: app/templates/chat.html:406
 #, python-brace-format
 msgid "similarity {v}"
 msgstr "similarity {v}"
 
-#: app/templates/chat.html:388
+#: app/templates/chat.html:407
 msgid "Share"
 msgstr "Share"
 
-#: app/templates/chat.html:390
+#: app/templates/chat.html:409
 msgid "Shared with"
 msgstr "Shared with"
 
-#: app/templates/chat.html:391
+#: app/templates/chat.html:410
 msgid "Share document"
 msgstr "Share document"
 
-#: app/templates/chat.html:392
+#: app/templates/chat.html:411
 msgid "Not shared with anyone yet"
 msgstr "Not shared with anyone yet"
 
-#: app/templates/chat.html:393
+#: app/templates/chat.html:412
 msgid "No other users"
 msgstr "No other users"
 
-#: app/templates/chat.html:395
+#: app/templates/chat.html:414
 #, python-brace-format
 msgid "Delete folder \"{name}\"?"
 msgstr "Delete folder \"{name}\"?"
 
-#: app/templates/chat.html:396
+#: app/templates/chat.html:415
 #, python-brace-format
 msgid ""
 "This will also delete {count} documents ({size}) inside the folder. "
@@ -5565,274 +5591,274 @@ msgstr ""
 "This will also delete {count} documents ({size}) inside the folder. "
 "Continue?"
 
-#: app/templates/chat.html:397
+#: app/templates/chat.html:416
 msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 msgstr "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 
-#: app/templates/chat.html:398
+#: app/templates/chat.html:417
 msgid "minutes_abbr"
 msgstr "min"
 
-#: app/templates/chat.html:399
+#: app/templates/chat.html:418
 msgid "status_pending"
 msgstr "Pending indexing"
 
-#: app/templates/chat.html:400
+#: app/templates/chat.html:419
 msgid "status_indexing"
 msgstr "Indexing in progress"
 
-#: app/templates/chat.html:401
+#: app/templates/chat.html:420
 msgid "status_indexed"
 msgstr "Indexed"
 
-#: app/templates/chat.html:402
+#: app/templates/chat.html:421
 msgid "status_failed"
 msgstr "Indexing failed"
 
-#: app/templates/chat.html:403
+#: app/templates/chat.html:422
 msgid "status_unknown"
 msgstr "Not indexed"
 
-#: app/templates/chat.html:404
+#: app/templates/chat.html:423
 msgid "transcribing"
 msgstr "Transcribing..."
 
-#: app/templates/chat.html:412
+#: app/templates/chat.html:431
 msgid "generating"
 msgstr "Generating..."
 
-#: app/templates/chat.html:414
+#: app/templates/chat.html:433
 msgid "cancelling"
 msgstr "Cancelling..."
 
-#: app/templates/chat.html:415
+#: app/templates/chat.html:434
 msgid "cancelled"
 msgstr "Cancelled"
 
-#: app/templates/chat.html:416
+#: app/templates/chat.html:435
 msgid "tool_get_current_time"
 msgstr "Getting time..."
 
-#: app/templates/chat.html:417
+#: app/templates/chat.html:436
 msgid "tool_calculator"
 msgstr "Calculating..."
 
-#: app/templates/chat.html:418
+#: app/templates/chat.html:437
 msgid "tool_time_calc"
 msgstr "Calculating date..."
 
-#: app/templates/chat.html:419
+#: app/templates/chat.html:438
 msgid "tool_web_search"
 msgstr "Searching the web..."
 
-#: app/templates/chat.html:420
+#: app/templates/chat.html:439
 msgid "tool_rag_search"
 msgstr "Searching documents..."
 
-#: app/templates/chat.html:421
+#: app/templates/chat.html:440
 msgid "tool_camera_snapshot"
 msgstr "Getting snapshot..."
 
-#: app/templates/chat.html:422
+#: app/templates/chat.html:441
 msgid "tool_read_page"
 msgstr "Reading the page..."
 
-#: app/templates/chat.html:423
+#: app/templates/chat.html:442
 msgid "tool_net_dns"
 msgstr "tool_net_dns"
 
-#: app/templates/chat.html:424
+#: app/templates/chat.html:443
 msgid "tool_net_whois"
 msgstr "tool_net_whois"
 
-#: app/templates/chat.html:425
+#: app/templates/chat.html:444
 msgid "tool_net_ping"
 msgstr "tool_net_ping"
 
-#: app/templates/chat.html:426
+#: app/templates/chat.html:445
 msgid "tool_net_trace"
 msgstr "tool_net_trace"
 
-#: app/templates/chat.html:427
+#: app/templates/chat.html:446
 msgid "tool_net_ports"
 msgstr "tool_net_ports"
 
-#: app/templates/chat.html:428
+#: app/templates/chat.html:447
 msgid "tool_net_http"
 msgstr "tool_net_http"
 
-#: app/templates/chat.html:429
+#: app/templates/chat.html:448
 msgid "tool_net_speed"
 msgstr "tool_net_speed"
 
-#: app/templates/chat.html:430
+#: app/templates/chat.html:449
 msgid "Preparing resources..."
 msgstr "⏳ Preparing resources..."
 
-#: app/templates/chat.html:431 app/templates/chat.html:432
+#: app/templates/chat.html:450 app/templates/chat.html:451
 msgid "Analyzing request..."
 msgstr "🔍 Analyzing request..."
 
-#: app/templates/chat.html:433
+#: app/templates/chat.html:452
 msgid "Analyzing image..."
 msgstr "🔍 Analyzing image..."
 
-#: app/templates/chat.html:434
+#: app/templates/chat.html:453
 msgid "Analyzing prompt..."
 msgstr "🔍 Analyzing prompt..."
 
-#: app/templates/chat.html:435
+#: app/templates/chat.html:454
 msgid "Generating video..."
 msgstr "🎬 Generating video..."
 
-#: app/templates/chat.html:436
+#: app/templates/chat.html:455
 msgid "Generating image..."
 msgstr "🎨 Generating image..."
 
-#: app/templates/chat.html:437
+#: app/templates/chat.html:456
 msgid "Editing image..."
 msgstr "✏️ Editing image..."
 
-#: app/templates/chat.html:438
+#: app/templates/chat.html:457
 msgid "Loading reasoning model..."
 msgstr "🧠 Loading reasoning model..."
 
-#: app/templates/chat.html:439
+#: app/templates/chat.html:458
 msgid "Loading the model..."
 msgstr "Loading the model..."
 
-#: app/templates/chat.html:440
+#: app/templates/chat.html:459
 msgid "Thinking..."
 msgstr "🤔 Thinking..."
 
-#: app/templates/chat.html:441
+#: app/templates/chat.html:460
 msgid "Searching documents..."
 msgstr "📚 Searching documents..."
 
-#: app/templates/chat.html:442 app/templates/chat.html:446
+#: app/templates/chat.html:461 app/templates/chat.html:465
 #, python-format
 msgid "Found %s fragments, preparing the answer..."
 msgstr "Found %s fragments, preparing the answer..."
 
-#: app/templates/chat.html:443
+#: app/templates/chat.html:462
 msgid "Searching the web..."
 msgstr "🌐 Searching the web..."
 
-#: app/templates/chat.html:444
+#: app/templates/chat.html:463
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Found %s results, preparing the answer..."
 
-#: app/templates/chat.html:445
+#: app/templates/chat.html:464
 msgid "Searching your conversation history..."
 msgstr "🗨 Searching your conversation history..."
 
-#: app/templates/chat.html:447
+#: app/templates/chat.html:466
 msgid "Getting time..."
 msgstr "🕐 Getting time..."
 
-#: app/templates/chat.html:448
+#: app/templates/chat.html:467
 msgid "Calculating..."
 msgstr "🔢 Calculating..."
 
-#: app/templates/chat.html:449
+#: app/templates/chat.html:468
 msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
-#: app/templates/chat.html:450
+#: app/templates/chat.html:469
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Deep analysis: reading documents"
 
-#: app/templates/chat.html:451
+#: app/templates/chat.html:470
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Deep analysis: phase %s"
 
-#: app/templates/chat.html:452
+#: app/templates/chat.html:471
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Deep analysis: searching the web"
 
-#: app/templates/chat.html:453
+#: app/templates/chat.html:472
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:454
+#: app/templates/chat.html:473
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Deep analysis: composing the answer"
 
-#: app/templates/chat.html:455
+#: app/templates/chat.html:474
 msgid "Starting web crawl..."
 msgstr "🕸️ Starting web crawl..."
 
-#: app/templates/chat.html:456
+#: app/templates/chat.html:475
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Crawling page %s..."
 
-#: app/templates/chat.html:457
+#: app/templates/chat.html:476
 msgid "Indexing crawled content..."
 msgstr "🕸️ Indexing crawled content..."
 
-#: app/templates/chat.html:458
+#: app/templates/chat.html:477
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Deep analysis (%s steps)"
 
-#: app/templates/chat.html:459
+#: app/templates/chat.html:478
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:460
+#: app/templates/chat.html:479
 msgid "Making the plan..."
 msgstr "Making the plan..."
 
-#: app/templates/chat.html:461
+#: app/templates/chat.html:480
 msgid "Extracting the visual continuity sheet..."
 msgstr "📐 Extracting the visual continuity sheet..."
 
-#: app/templates/chat.html:462
+#: app/templates/chat.html:481
 msgid "Could not build the visual continuity sheet — images continue without it."
 msgstr ""
 "⚠️ Could not build the visual continuity sheet — images continue without "
 "it."
 
-#: app/templates/chat.html:463
+#: app/templates/chat.html:482
 msgid "Creating index for document..."
 msgstr "Creating index for document..."
 
-#: app/templates/chat.html:464
+#: app/templates/chat.html:483
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:465
+#: app/templates/chat.html:484
 msgid "Step"
 msgstr "Step"
 
-#: app/templates/chat.html:466
+#: app/templates/chat.html:485
 msgid "minute_abbr"
 msgstr "m"
 
-#: app/templates/chat.html:467
+#: app/templates/chat.html:486
 msgid "second_abbr"
 msgstr "s"
 
-#: app/templates/chat.html:468
+#: app/templates/chat.html:487
 msgid "timer_zero"
 msgstr "0s"
 
-#: app/templates/chat.html:499
+#: app/templates/chat.html:519
 msgid "Show the path between two nodes"
 msgstr "Show the path between two nodes"
 
-#: app/templates/chat.html:500
+#: app/templates/chat.html:520
 msgid "Find a node"
 msgstr "Find a node"
 
-#: app/templates/chat.html:502
+#: app/templates/chat.html:522
 msgid "Show or hide relation types"
 msgstr "Show or hide relation types"
 
-#: app/templates/chat.html:502
+#: app/templates/chat.html:522
 msgid "Relations"
 msgstr "Relations"
 

@@ -10,6 +10,19 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Editing documents the assistant wrote** — the tool writes and appends text today, and can
+  emit `.docx`/`.xlsx`/`.pdf`, but it cannot change what it wrote. Editing is scoped to
+  **generated documents only**: an upload is never modified in place, because its bytes may be
+  shared (the blob layer keeps one copy per hash) and a recipient's copy must not change under
+  them. A request to fix an uploaded file is answered by writing a **new document built from
+  it**, under a different name, and editing that one. Planned in four steps, in value order:
+  (1) replace the content of a generated text document, with a version row and a rollback;
+  (2) replace a generated `.docx`/`.xlsx` from a full new body, warning that a spreadsheet
+  loses charts and images on save; (3) targeted edits (one paragraph, one cell) only if a real
+  need appears; (4) a generated PDF is re-rendered from its stored source text, never patched —
+  a PDF is a drawing, not text. Every step sets the document `stale` so search cannot serve the
+  old body.
+
 - **An adaptive lead for frequent actions** — the lead is a constant: ten minutes, capped at
   half the interval for a repeating action (v13.5). That is a rule of thumb, not a measurement.
   The next step is to lead by what the item's own runs actually cost — the median duration of its

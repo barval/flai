@@ -5,9 +5,9 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.5\n"
+"Project-Id-Version: FLAI 13.6\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 02:25+0300\n"
+"POT-Creation-Date: 2026-11-19 13:14+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -554,7 +554,7 @@ msgstr "⚠️ В вашем сообщении нет ссылки"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Сервис обхода сайтов недоступен"
 
-#: app/queue.py:4974 app/tools.py:879
+#: app/queue.py:4974 app/tools.py:895
 msgid "This address is not available for reading"
 msgstr "⚠️ Этот адрес недоступен для чтения"
 
@@ -677,40 +677,40 @@ msgstr ""
 msgid "Unknown session"
 msgstr "Неизвестный сеанс"
 
-#: app/scheduler.py:190 app/templates/chat.html:489
+#: app/scheduler.py:215 app/templates/chat.html:489
 msgid "🛠️ Scheduler: actions"
 msgstr "🛠️ Планировщик: действия"
 
-#: app/scheduler.py:191 app/templates/chat.html:488
+#: app/scheduler.py:216 app/templates/chat.html:488
 msgid "🔔 Scheduler: reminders"
 msgstr "🔔 Планировщик: напоминания"
 
-#: app/scheduler.py:374
+#: app/scheduler.py:399
 #, python-brace-format
 msgid "Skipped firings: {count}"
 msgstr "Пропущено срабатываний: {count}"
 
-#: app/scheduler.py:530
+#: app/scheduler.py:555
 msgid "The action could not run in time"
 msgstr "Действие не успело выполниться"
 
-#: app/scheduler.py:532
+#: app/scheduler.py:557
 msgid "The action did not finish in time"
 msgstr "Действие не завершилось вовремя"
 
-#: app/scheduler.py:536
+#: app/scheduler.py:561
 msgid "The action finished without an answer"
 msgstr "Действие завершилось без ответа"
 
-#: app/scheduler.py:538
+#: app/scheduler.py:563
 msgid "The action was cancelled"
 msgstr "Действие отменено"
 
-#: app/scheduler.py:540
+#: app/scheduler.py:565
 msgid "The action failed"
 msgstr "Действие завершилось ошибкой"
 
-#: app/scheduler.py:548
+#: app/scheduler.py:573
 #, python-brace-format
 msgid "Finished at {at} instead of {target}"
 msgstr "Готово в {at} вместо {target}"
@@ -997,68 +997,68 @@ msgstr ""
 msgid "Describe the scene and motion the video must show."
 msgstr "Опиши сцену и движение, которые должно показать видео."
 
-#: app/tools.py:810
+#: app/tools.py:826
 msgid "Current time unavailable"
 msgstr "Текущее время недоступно"
 
-#: app/tools.py:825
+#: app/tools.py:841
 msgid "Division by zero"
 msgstr "Деление на ноль"
 
-#: app/tools.py:832
+#: app/tools.py:848
 #, python-brace-format
 msgid "Calculation error: {error}"
 msgstr "Ошибка вычисления: {error}"
 
-#: app/tools.py:837 app/tools.py:906 app/tools.py:948 app/tools.py:1276
-#: app/tools.py:1357 app/tools.py:1653 app/tools.py:1899 app/tools.py:1918
+#: app/tools.py:853 app/tools.py:922 app/tools.py:964 app/tools.py:1292
+#: app/tools.py:1373 app/tools.py:1674 app/tools.py:1920 app/tools.py:1939
 msgid "The tool could not complete the request."
 msgstr "Инструмент не смог выполнить запрос."
 
-#: app/tools.py:850
+#: app/tools.py:866
 msgid "Web search service unavailable"
 msgstr "Сервис веб-поиска недоступен"
 
-#: app/tools.py:858
+#: app/tools.py:874
 #, python-brace-format
 msgid "No results found for query: {query}"
 msgstr "Результаты не найдены для запроса: {query}"
 
-#: app/tools.py:874
+#: app/tools.py:890
 msgid "Page reading service is unavailable"
 msgstr "⚠️ Сервис чтения страниц недоступен"
 
-#: app/tools.py:885
+#: app/tools.py:901
 msgid "Failed to read the page"
 msgstr "⚠️ Не удалось прочитать страницу"
 
-#: app/tools.py:896
+#: app/tools.py:912
 msgid "Document search service unavailable"
 msgstr "Сервис поиска в документах недоступен"
 
-#: app/tools.py:899
+#: app/tools.py:915
 msgid "User not identified for document search"
 msgstr "Пользователь не идентифицирован для поиска в документах"
 
-#: app/tasks/runner.py:591 app/tools.py:910
+#: app/tasks/runner.py:591 app/tools.py:926
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "Релевантные документы не найдены для запроса: {query}"
 
-#: app/tools.py:932
+#: app/tools.py:948
 msgid "User not identified for conversation search"
 msgstr "Пользователь не идентифицирован для поиска по истории диалогов"
 
-#: app/tools.py:952
+#: app/tools.py:968
 #, python-brace-format
 msgid "No past conversations found for query: {query}"
 msgstr "Прошлые диалоги по запросу «{query}» не найдены"
 
-#: app/tools.py:966 app/tools.py:1001 modules/cam.py:404 modules/cam.py:527
+#: app/tools.py:982 app/tools.py:1017 modules/cam.py:404 modules/cam.py:527
 msgid "CCTV service unavailable"
 msgstr "Сервис видеонаблюдения недоступен"
 
-#: app/tools.py:979
+#: app/tools.py:995
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
@@ -1066,57 +1066,57 @@ msgstr ""
 "Что сейчас видно в этой комнате? Назови людей, животных, предметы и "
 "происходящее действие."
 
-#: app/tools.py:989
+#: app/tools.py:1005
 msgid "Snapshot captured; no description is available."
 msgstr "Снимок получен, но описание недоступно."
 
-#: app/tools.py:1088 app/tools.py:1095 app/tools.py:1111 app/tools.py:1158
-#: app/tools.py:1161 app/tools.py:1169 app/tools.py:1215 app/tools.py:1218
-#: app/tools.py:1226 app/tools.py:1233 app/tools.py:1243 app/tools.py:1272
+#: app/tools.py:1104 app/tools.py:1111 app/tools.py:1127 app/tools.py:1174
+#: app/tools.py:1177 app/tools.py:1185 app/tools.py:1231 app/tools.py:1234
+#: app/tools.py:1242 app/tools.py:1249 app/tools.py:1259 app/tools.py:1288
 #, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Ошибка вычисления даты: {error}"
 
-#: app/tools.py:1268
+#: app/tools.py:1284
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Неизвестная операция time_calc: {op}"
 
-#: app/tools.py:1329
+#: app/tools.py:1345
 msgid "User not identified for network tools"
 msgstr "Пользователь не определён для сетевых инструментов"
 
-#: app/tools.py:1331
+#: app/tools.py:1347
 msgid "Network tools are not available to you."
 msgstr "Сетевые инструменты Вам недоступны."
 
-#: app/tools.py:1333
+#: app/tools.py:1349
 msgid "The network diagnostics service is not running"
 msgstr "Служба сетевой диагностики не запущена"
 
-#: app/tools.py:1338
+#: app/tools.py:1354
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "Этот адрес запрещён: {reason}"
 
-#: app/tools.py:1338
+#: app/tools.py:1354
 msgid "loopback or link-local"
 msgstr "петля или link-local"
 
 # GPU memory error messages
-#: app/tools.py:1342
+#: app/tools.py:1358
 msgid "Too many network calls; try again in a minute."
 msgstr "Слишком много сетевых вызовов; попробуйте через минуту."
 
-#: app/tools.py:1351
+#: app/tools.py:1367
 msgid "The diagnostics service returned nothing"
 msgstr "Служба диагностики ничего не вернула"
 
-#: app/tools.py:1421
+#: app/tools.py:1437
 msgid "I could not tell the time. When should it happen?"
 msgstr "Не понял время. Когда это должно произойти?"
 
-#: app/tools.py:1427
+#: app/tools.py:1443
 #, python-brace-format
 msgid ""
 "An action cannot run more often than every {minutes} minutes on this "
@@ -1125,83 +1125,93 @@ msgstr ""
 "На этом инстансе действие не может запускаться чаще, чем раз в {minutes} "
 "минут"
 
-#: app/tools.py:1429
+#: app/tools.py:1445
 #, python-brace-format
 msgid "A reminder cannot repeat more often than every {minutes} minutes"
 msgstr "Напоминание не может повторяться чаще, чем раз в {minutes} минут"
 
-#: app/tools.py:1433
+#: app/tools.py:1449
 msgid "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 msgstr ""
 "Такое повторение мне неизвестно: разово, ежедневно, еженедельно, "
 "ежемесячно или каждые минуты"
 
-#: app/tools.py:1435
+#: app/tools.py:1451
+msgid "I could not tell which weekdays. Name them as 1 = Monday … 7 = Sunday"
+msgstr ""
+"Не могу понять, какие дни недели. Назовите их числами: 1 — понедельник … "
+"7 — воскресенье"
+
+#: app/tools.py:1453
+msgid "Several weekdays only make sense for a weekly schedule"
+msgstr "Несколько дней недели имеют смысл только в еженедельном расписании"
+
+#: app/tools.py:1455
 #, python-brace-format
 msgid "That time has already passed: {when}. When should it happen?"
 msgstr "Это время уже прошло: {when}. Когда это должно произойти?"
 
-#: app/tools.py:1439
+#: app/tools.py:1459
 msgid "There is nothing to send or do. What should happen?"
 msgstr "Нечего отправить или сделать. Что должно произойти?"
 
-#: app/tools.py:1441
+#: app/tools.py:1461
 #, python-brace-format
 msgid "That is too long to schedule (max {limit} characters)"
 msgstr "Слишком длинно для расписания (не больше {limit} символов)"
 
-#: app/tools.py:1444
+#: app/tools.py:1464
 msgid "The schedule could not be created"
 msgstr "Не удалось создать расписание"
 
-#: app/tools.py:1465
+#: app/tools.py:1485
 msgid "Only a scheduled action can start a task"
 msgstr "Запускать задачи может только запланированное действие"
 
-#: app/tools.py:1468 app/tools.py:1519
+#: app/tools.py:1488 app/tools.py:1539
 msgid "User not identified for the scheduler"
 msgstr "Пользователь не определён для планировщика"
 
-#: app/tools.py:1471
+#: app/tools.py:1491
 msgid "There is nothing to do: the task needs a goal"
 msgstr "Нечего делать: у задачи должна быть цель"
 
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
 # view
-#: app/tools.py:1474
+#: app/tools.py:1494
 msgid "Background tasks are disabled on this installation"
 msgstr "Фоновые задачи на этой установке отключены"
 
-#: app/tools.py:1484
+#: app/tools.py:1504
 #, python-brace-format
 msgid "🛠️ Scheduler: {name}"
 msgstr "🛠️ Планировщик: {name}"
 
-#: app/tools.py:1503
+#: app/tools.py:1523
 #, python-brace-format
 msgid "🛠️ {title} — the task is started and its result will appear in Tasks"
 msgstr "🛠️ {title} — задача запущена, результат появится в «Задачах»"
 
-#: app/tools.py:1542
+#: app/tools.py:1563
 #, python-brace-format
 msgid "Action scheduled for {when}"
 msgstr "Действие на {when}"
 
-#: app/tools.py:1542
+#: app/tools.py:1563
 #, python-brace-format
 msgid "Reminder set for {when}"
 msgstr "Напоминание на {when}"
 
-#: app/tools.py:1547
+#: app/tools.py:1568
 #, python-brace-format
 msgid "then every {minutes} minutes"
 msgstr "далее каждые {minutes} минут"
 
-#: app/tools.py:1599
+#: app/tools.py:1620
 msgid "There is nothing to write: the content is empty"
 msgstr "Нечего записывать: содержимое пустое"
 
-#: app/tools.py:1600
+#: app/tools.py:1621
 #, python-brace-format
 msgid ""
 "Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
@@ -1210,82 +1220,82 @@ msgstr ""
 "Неподдерживаемый формат документа: {detail}. Используйте md, csv, json, "
 "txt, docx, xlsx или pdf"
 
-#: app/tools.py:1601
+#: app/tools.py:1622
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "Документ слишком большой (предел {limit} КБ)"
 
-#: app/tools.py:1604
+#: app/tools.py:1625
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "Место для документов закончилось; сначала удалите что-нибудь"
 
-#: app/tools.py:1605
+#: app/tools.py:1626
 msgid "Can only append to a document this assistant wrote, not to an upload"
 msgstr ""
 "Дописывать можно только в документ, написанный ассистентом, но не в "
 "загрузку"
 
-#: app/tools.py:1606
+#: app/tools.py:1627
 msgid "The JSON does not parse, so nothing was written"
 msgstr "JSON не разбирается, поэтому ничего не записано"
 
-#: app/tools.py:1607
+#: app/tools.py:1628
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "Имя документа не подходит: {detail}"
 
-#: app/tools.py:1608
+#: app/tools.py:1629
 msgid "A table needs rows: a list of rows, each a list of cells"
 msgstr "Таблице нужны строки: список строк, каждая — список ячеек"
 
-#: app/tools.py:1609
+#: app/tools.py:1630
 msgid "Only text documents can grow: write a new file instead of appending"
 msgstr ""
 "Расти может только текстовый документ: создайте новый файл вместо "
 "дописывания"
 
-#: app/tools.py:1610
+#: app/tools.py:1631
 #, python-brace-format
 msgid "The document is too large to render ({detail} bytes)"
 msgstr "Документ слишком велик для сборки ({detail} байт)"
 
-#: app/tools.py:1611
+#: app/tools.py:1632
 msgid "The PDF renderer has no font with Cyrillic on this installation"
 msgstr "В сборщике PDF на этой установке нет шрифта с кириллицей"
 
-#: app/tools.py:1612
+#: app/tools.py:1633
 #, python-brace-format
 msgid "Too many sheets in one workbook (max {detail})"
 msgstr "Слишком много листов в одной книге (максимум {detail})"
 
-#: app/tools.py:1613
+#: app/tools.py:1634
 #, python-brace-format
 msgid "Too many rows in one sheet (max {detail})"
 msgstr "Слишком много строк на одном листе (максимум {detail})"
 
-#: app/tools.py:1614
+#: app/tools.py:1635
 #, python-brace-format
 msgid "Too many columns in one row (max {detail})"
 msgstr "Слишком много столбцов в одной строке (максимум {detail})"
 
-#: app/tools.py:1615
+#: app/tools.py:1636
 msgid "The rows are not a list of rows"
 msgstr "Строки таблицы должны быть списком строк"
 
-#: app/tools.py:1616
+#: app/tools.py:1637
 #, python-brace-format
 msgid "The sheets are not a list of {name, rows} objects"
 msgstr "Листы должны быть списком объектов {name, rows}"
 
-#: app/tools.py:1618
+#: app/tools.py:1639
 msgid "The document could not be written"
 msgstr "Документ не удалось записать"
 
-#: app/tools.py:1636
+#: app/tools.py:1657
 msgid "User not identified for documents"
 msgstr "Пользователь не определён для работы с документами"
 
-#: app/tools.py:1658
+#: app/tools.py:1679
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1294,16 +1304,16 @@ msgstr ""
 "Сохранено как {name} ({size} КБ) в ваших документах. Отметьте его "
 "галочкой, чтобы включить поиск."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1671
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1692
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Неизвестный навык: {name}"
 
-#: app/tools.py:1830
+#: app/tools.py:1851
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."
 
-#: app/tools.py:1845
+#: app/tools.py:1866
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1311,11 +1321,11 @@ msgstr ""
 "Вызов отклонён: он повторяет вызов с теми же аргументами, результат "
 "которого уже приведён выше."
 
-#: app/tools.py:1851
+#: app/tools.py:1872
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."
 
-#: app/tools.py:1905
+#: app/tools.py:1926
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Неизвестный инструмент: {tool}"

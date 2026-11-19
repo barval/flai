@@ -1,4 +1,4 @@
-# Skills — FLAI v13.5
+# Skills — FLAI v13.6
 
 A skill is a folder of instructions the model can load **on demand**. The catalogue
 line — name and one description — sits in every system prompt; the body is read only

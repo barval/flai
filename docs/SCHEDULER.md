@@ -1,4 +1,4 @@
-# Scheduler — reminders and actions (FLAI v13.5)
+# Scheduler — reminders and actions (FLAI v13.6)
 
 FLAI answers when asked. This makes it act **at a time**: "remind me tomorrow at nine",
 "every Friday at 16:00 check the logs" — one of two kinds, created from ordinary chat.

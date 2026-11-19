@@ -87,6 +87,15 @@ dropped rather than waited out.
 4. **Fallback** — a skill the model calls directly through `activate_skill` returns its
    body as a tool result. That tool is advertised only while at least one skill exists.
 
+Step 2 is model-dependent, and that is measured rather than assumed. On the 47-case seed set
+(`flask kernel-eval --mode kernel`) the universal Qwen3.6-35B-A3B (Q2) never fills the `skills`
+field — four prompt variants changed nothing — while Qwen3VL-8B, the multimodal half of the pair,
+names the right skill in every Russian positive case and misses both English ones. The field is
+therefore an opportunity, not a guarantee: steps 1 and 4 are what still work when a model ignores
+it. The same runs put the trade in numbers: 0.957 intent and 0.400 tool selection for the 8B
+against 1.000 and 1.000 for the universal model, so the mode that activates skills is also the mode
+that selects tools less accurately.
+
 A skill never overrides a pipeline intent: crawl, document search, history, memory and
 media actions are decided before any skill is considered.
 

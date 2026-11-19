@@ -288,10 +288,12 @@ def catalog(
             for skill in skills
             if not skill.allowed_tools or any(name in available for name in skill.allowed_tools)
         ]
-    if not skills:
-        return ""
-    lines = [f"- `{skill.name}`: {skill.for_lang(lang)[0]}" for skill in skills]
-    return "\n".join(lines)
+    return render_catalog(skills, lang)
+
+
+def render_catalog(skills: list[Skill], lang: str = "en") -> str:
+    """The prompt lines for a chosen list of skills (name and description only)."""
+    return "\n".join(f"- `{skill.name}`: {skill.for_lang(lang)[0]}" for skill in skills)
 
 
 def activate(name: str, lang: str = "en", root: Path | str | None = None) -> str | None:

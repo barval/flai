@@ -171,23 +171,55 @@ def network_rule(lang: str = "ru", for_kernel: bool = False) -> str:
     return rules.get(lang, rules["en"])
 
 
+def _live_tool_names() -> set[str] | None:
+    """The tools this installation offers right now, or None when unreadable."""
+    try:
+        from app.tools import get_tool_definitions
+
+        return {item["function"]["name"] for item in get_tool_definitions("en")}
+    except Exception:  # noqa: BLE001 - no catalogue means no filtering, not no skills
+        return None
+
+
 def _kernel_skills() -> set[str]:
-    """The names the kernel may return, or an empty set when none is installed."""
+    """The names the kernel may return: enabled, and their tools exist.
+
+    The same availability filter the chat prompt applies. Without it the kernel
+    could name ``net-diagnostics`` while its sidecar is off: the route would then
+    leave the subsystem that can answer and enter the chat loop carrying
+    instructions for tools that are not on offer.
+    """
     try:
         from app.skills import active_skills
 
-        return {skill.name for skill in active_skills()}
+        skills = active_skills()
     except Exception:  # noqa: BLE001 - a broken skills folder must not fail routing
         return set()
+    available = _live_tool_names()
+    if available is not None:
+        skills = [
+            skill
+            for skill in skills
+            if not skill.allowed_tools or any(name in available for name in skill.allowed_tools)
+        ]
+    return {skill.name for skill in skills}
 
 
 def _kernel_skill_catalog(names: set[str]) -> str:
-    """The skill lines the kernel chooses from (name and description, no body)."""
+    """The skill lines the kernel chooses from (name and description, no body).
+
+    Built from the names this module already validated, so a skill cannot be
+    selectable in one function and absent from the other.
+    """
     if not names:
         return ""
-    from app.skills import catalog
+    try:
+        from app.skills import active_skills, render_catalog
 
-    return catalog("en")
+        chosen = [skill for skill in active_skills() if skill.name in names]
+    except Exception:  # noqa: BLE001 - an unreadable catalogue leaves the names as they are
+        return ""
+    return render_catalog(chosen, "en")
 
 
 def _kernel_rooms(cam: Any) -> str:

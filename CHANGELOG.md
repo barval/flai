@@ -35,6 +35,20 @@
 
 ### Added
 
+- **Skill selection is measured, and it depends on the model.** The evaluation harness now scores
+  skills — `EvalCase.expected_skills`, `skill_exact`, `false_skills` and `missed_skills` — and the
+  seed set grew to 47 cases with five positive cases and five traps. Measured with
+  `flask kernel-eval --mode kernel`: in universal mode (Qwen3.6-35B-A3B Q2) the kernel never fills
+  the `skills` field — 0.894 exact, 0 false, 5 missed — and four prompt variants (the discouraging
+  "often the empty array" line removed, the section moved above the tool catalogue, an imperative
+  with examples added) changed nothing, while the container log contains no skill activation at
+  all. In the pair, with Qwen3VL-8B as the kernel, three of the five fire — every Russian positive,
+  both English ones missed — at 0.957 exact and 0 false; the same run scores intent 0.957 and tool
+  selection 0.400, against 1.000 and 1.000 on the universal model, so the mode choice trades routing
+  precision for skill activation. The kernel now applies the same availability filter as the chat
+  prompt: a skill whose tools are absent is neither listed nor nameable, which previously let it
+  route into a loop carrying instructions for tools that were not offered.
+
 - **Two built-in skills: network diagnostics and documents.** `net-diagnostics` carries the
   order of checks (DNS first, then ping, trace, ports, HTTP, whois, and speed only when asked),
   what counts as proof and what does not, the one-host-per-call rule, and the refusal path.

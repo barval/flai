@@ -127,3 +127,41 @@ def test_a_skill_still_takes_over_a_prose_intent():
     route = decision_to_route(decision, "check the maths behind this claim")
     assert route["action"] == "none"
     assert route["skills"] == ("web-research",)
+
+
+@pytest.mark.unit
+def test_the_kernel_ignores_a_skill_whose_tools_are_not_offered(monkeypatch):
+    """The chat prompt hides it; a kernel that still names it would route into a
+    loop carrying instructions for tools that are not on offer."""
+    import app.skills as skills
+    import app.tools as tools
+    from modules.base import _kernel_skill_catalog, _kernel_skills
+
+    monkeypatch.setattr(
+        tools, "get_tool_definitions", lambda lang="en": [{"function": {"name": "web_search"}}]
+    )
+    skills.reset_cache()
+
+    names = _kernel_skills()
+    catalog = _kernel_skill_catalog(names)
+
+    assert "net-diagnostics" not in names
+    assert "net-diagnostics" not in catalog
+    assert "web-research" in names
+    assert "web-research" in catalog
+
+
+@pytest.mark.unit
+def test_an_unreadable_tool_catalogue_hides_nothing(monkeypatch):
+    """Same rule as a skill-less catalogue: a broken reader must not remove skills."""
+    import app.skills as skills
+    import app.tools as tools
+    from modules.base import _kernel_skills
+
+    def boom(lang="en"):
+        raise RuntimeError("no app context")
+
+    monkeypatch.setattr(tools, "get_tool_definitions", boom)
+    skills.reset_cache()
+
+    assert "net-diagnostics" in _kernel_skills()

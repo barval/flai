@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +57,23 @@ ROOTS = (
     ".opencode/",
     ".githooks/",
 )
+
+
+def _ignored(root: Path, path: str) -> bool:
+    """A path the repository deliberately does not track may be absent in a fresh clone.
+
+    The nested camera clone is the measured case: the skill names its configuration as an
+    example of a file that must stay ignored, and a checkout without the clone (CI) has no
+    such file. Asking git is the only reliable answer — the ignore rules are the source of
+    truth, not a list repeated here.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", path], cwd=root, capture_output=True
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
 
 
 def _is_path_claim(text: str) -> bool:
@@ -132,7 +150,11 @@ def main() -> int:
         for number, line in enumerate(lines, 1):
             for match in TOKEN.finditer(line):
                 token = match.group(1).strip().split("#", 1)[0].rstrip("/")
-                if _is_path_claim(token) and not (root / token).exists():
+                if (
+                    _is_path_claim(token)
+                    and not (root / token).exists()
+                    and not _ignored(root, token)
+                ):
                     findings.append((relative, "path", number, token))
 
             for match in FLASK_CMD.finditer(line):

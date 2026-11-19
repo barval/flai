@@ -46,8 +46,9 @@ def test_the_kernel_selection_can_name_an_mcp_tool(app):
     app.config["MCP_ENABLED"] = True
     with app.app_context(), patch("app.mcp_registry.tool_definitions", return_value=[_FAKE]):
         selected = select_tool_definitions(("mcp__rooms__ping",), "en")
-    # The installed skills' loader rides along; see test_skills_wiring.py.
-    names = [item["function"]["name"] for item in selected if item["function"]["name"] != SKILL_LOADER_TOOL]
+    # The skill loader, the document writer and the scheduler tools ride along.
+    kept = {SKILL_LOADER_TOOL, "write_document", "schedule_reminder", "schedule_action"}
+    names = [item["function"]["name"] for item in selected if item["function"]["name"] not in kept]
     assert names == ["mcp__rooms__ping"]
 
 

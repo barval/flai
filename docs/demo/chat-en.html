@@ -14275,10 +14275,12 @@ async function checkUploadName(name, file) {
         });
         if (response.status !== 409) return null;
         const payload = await response.json();
-        const chosen = window.prompt(payload.error || t('document_upload_failed'), payload.suggested || name);
-        if (!chosen || chosen.trim() === '') return null;
-        if (chosen.trim() === name) return null;
-        return new File([file], chosen.trim(), { type: file.type });
+        // The name is taken; the server answered with a free one. Take it instead of
+        // asking: this panel has its own dialogs, and a native prompt here was the one
+        // place that bypassed them.
+        const chosen = String(payload.suggested || '').trim();
+        if (!chosen || chosen === name) return null;
+        return new File([file], chosen, { type: file.type });
     } catch (err) {
         return null;
     }

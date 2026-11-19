@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools import SKILL_LOADER_TOOL, get_tool_definitions, select_tool_definitions
+from app.tools import (
+    SCHEDULER_TOOLS,
+    SKILL_LOADER_TOOL,
+    WRITE_DOCUMENT_TOOL,
+    get_tool_definitions,
+    select_tool_definitions,
+)
+
+# Kept on purpose when the kernel narrows the list: the skill loader, the only way to
+# hand the user a file, and the scheduling tools. They are not part of "what was chosen".
+ALWAYS_KEPT = {SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS}
 
 
 def _names(definitions):
-    """Tool names without the skill loader, which is always kept when skills exist."""
-    return [item["function"]["name"] for item in definitions if item["function"]["name"] != SKILL_LOADER_TOOL]
+    return [item["function"]["name"] for item in definitions if item["function"]["name"] not in ALWAYS_KEPT]
 
 
 @pytest.mark.unit
@@ -31,8 +40,9 @@ def test_empty_tuple_advertises_everything():
 def test_subset_is_returned_in_catalog_order():
     selected = select_tool_definitions(("calculator",))
     assert _names(selected) == ["calculator"]
-    # The installed skills' loader is kept on purpose; see test_skills_wiring.py.
-    assert selected[-1]["function"]["name"] == SKILL_LOADER_TOOL
+    kept = {item["function"]["name"] for item in selected}
+    assert SKILL_LOADER_TOOL in kept
+    assert WRITE_DOCUMENT_TOOL in kept
 
 
 @pytest.mark.unit

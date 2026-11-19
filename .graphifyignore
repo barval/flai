@@ -1,0 +1,19 @@
+# Minified vendor bundles are not project code: two files supplied 3 670 of
+# 17 620 nodes, with labels such as "Bi", "qr" and "Wr" that poison queries.
+app/static/vendor/
+app/static/**/*.min.js
+
+# Generated demo artefacts, rebuilt from the capture pipeline.
+demo/
+docs/demo/
+
+# Markdown: the background refresh is code-only, so prose would rot in the
+# graph while it looked current. Prose is searched with grep.
+*.md
+
+# Tests dominated the graph (7 241 of 12 417 nodes after the first pass) and
+# pushed fixtures into every traversal. Test discovery is a grep question.
+tests/
+
+# The graph itself and local build caches.
+graphify-out/

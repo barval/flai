@@ -20,6 +20,7 @@ Handoff:
 | Skill | Owns |
 |---|---|
 | `opening-flai-release` (this one) | branch cut, current-version markers, dated previous CHANGELOG section, new `Unreleased` section, empty What's New |
+| `implementing-flai-change` | designing, planning and executing the feature work that lands on this release line |
 | `preparing-flai-release` | merging release branches, audit, filling What's New, release gate, final report |
 
 ## Inputs

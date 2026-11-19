@@ -43,6 +43,35 @@ The README is a short overview plus quick start. Every topic below has a dedicat
 
 **Translation parity is enforced** for every user- or admin-facing document: a `docs/X.md` without a `-ru` suffix is English-only, and its `docs/X-ru.md` twin must mirror it section for section. See rule 6.
 
+## Agent Workflow
+
+A non-trivial feature or fix runs the full loop: brainstorm -> design -> plan -> execute task by task. A trivial change skips the ceremony.
+
+| Artefact | Path |
+|----------|------|
+| Design | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` |
+| Plan | `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` |
+| Ledger | `.superpowers/sdd/<YYYY-MM-DD>-<topic>/progress.md` |
+
+These trees are local-only by project decision: `docs/superpowers/` and `.superpowers/` are git-ignored. Never `git add -f` them. The specs contain private data, real user quotes and Russian fragments; they are working notes, not published artefacts, and the English-only rule applies to anything that is committed.
+
+The authoritative procedure is the superpowers skills (`writing-plans`, `subagent-driven-development`). `implementing-flai-change` in `.opencode/skills/` records only the FLAI overrides:
+
+- No branch and no worktree without explicit approval. The development stack is bind-mounted to this checkout, so a worktree has no services.
+- Plan approval authorizes only the files named in the plan. Anything else stops and asks.
+- Subagents never run pytest, docker commands or database commands. The lead runs one narrow test file (or a `::`/`-k` selection) per task and records the exact command and its result in the ledger.
+- Handoff: release -> `preparing-flai-release`; server -> `deploying-flai`.
+
+## Knowledge Graph (graphify)
+
+`graphify-out/` is a local, git-ignored graph of the code. It is an index for navigation, not a source of fact:
+
+- "Where is X / who calls Y / how does this connect" -> `graphify query`, then confirm every cited node with `grep`/`read` before relying on it.
+- Exact text, line numbers, uncommitted changes, and anything changed since the last build -> `grep`.
+- Never edit a file from a `source_location` alone; read the file first.
+- Before changing a shared node, run `graphify affected "<name>"`.
+- The graph refreshes code on the first shell call of a session; markdown is excluded because that refresh never touches prose. After a refactor that deletes code, rebuild with `graphify update . --force`.
+
 ## Commands (exact)
 
 ```bash

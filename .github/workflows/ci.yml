@@ -45,6 +45,32 @@ jobs:
       - name: Check the code parses on the runtime version
         run: python -m compileall -q app modules
 
+  docs-and-skills:
+    name: Docs and skills (read-only checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Babel
+        run: |
+          python -m pip install --upgrade pip
+          pip install Babel
+      - name: Check secrets
+        run: python .opencode/skills/preparing-flai-release/scripts/check_secrets.py
+      - name: Check translations
+        run: python .opencode/skills/preparing-flai-release/scripts/check_translations.py
+      - name: Check env parity
+        run: python .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
+      - name: Check documented commands and keys
+        run: python .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
+      - name: Check dead paths
+        run: python .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
+      - name: Check skill claims
+        run: python .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
+
   test:
     name: Tests (pytest)
     runs-on: ubuntu-latest

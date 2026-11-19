@@ -33,6 +33,8 @@ CLEAN_GATES = (
     "check_env_parity.py",
     "check_behaviour_claims.py",
     "check_deploy_keys.py",
+    "check_skills_coverage.py",
+    "check_readme_features.py",
 )
 
 
@@ -169,3 +171,65 @@ def test_mypy_ratchet_reports_an_entry_with_no_file(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "app.gone" in result.stdout
+
+
+@pytest.mark.unit
+def test_skills_coverage_reports_a_capability_without_a_line(tmp_path: Path) -> None:
+    """A tool nobody wrote down is a capability the assistant cannot offer."""
+    script = SCRIPTS / "check_skills_coverage.py"
+    layout = tmp_path / ".opencode" / "skills" / "preparing-flai-release" / "scripts"
+    layout.mkdir(parents=True)
+    (layout / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "tools.py").write_text(
+        "from typing import Any\n\n"
+        "_EXECUTOR_MAP: dict[str, Any] = {\n"
+        '    "ghost_tool": lambda ctx, **kw: None,\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app" / "tool_registry.py").write_text(
+        "TOOL_SPECS: tuple[ToolSpec, ...] = (\n"
+        "    ToolSpec(\n"
+        '        id="ghost_task",\n'
+        "    ),\n"
+        ")\n\n"
+        "RLM_TOOL_SPECS: tuple[ToolSpec, ...] = ()\n",
+        encoding="utf-8",
+    )
+    for lang in ("en", "ru"):
+        folder = tmp_path / "prompts" / lang
+        folder.mkdir(parents=True)
+        (folder / "skills.txt").write_text("  - test capability\n", encoding="utf-8")
+
+    result = _run(str(layout / script.name))
+
+    assert result.returncode == 1
+    assert "UNOWNED TOOL" in result.stdout and "ghost_tool" in result.stdout
+    assert "UNOWNED TASK" in result.stdout and "ghost_task" in result.stdout
+
+
+@pytest.mark.unit
+def test_readme_features_reports_an_unlinked_document(tmp_path: Path) -> None:
+    """A document nobody can reach from the README is a capability the reader never sees."""
+    script = SCRIPTS / "check_readme_features.py"
+    layout = tmp_path / ".opencode" / "skills" / "preparing-flai-release" / "scripts"
+    layout.mkdir(parents=True)
+    (layout / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "ORPHAN.md").write_text("# orphan\n", encoding="utf-8")
+    (tmp_path / "docs" / "ORPHAN-ru.md").write_text("# orphan\n", encoding="utf-8")
+    (tmp_path / "prompts" / "en").mkdir(parents=True)
+    (tmp_path / "prompts" / "en" / "base_text.template").write_text(
+        "## 1. SIMPLE\n\n## 14. SOMETHING — [-FOO-] and query\n", encoding="utf-8"
+    )
+    (tmp_path / "README.md").write_text("one of fourteen categories\n", encoding="utf-8")
+    (tmp_path / "README-ru.md").write_text("в одну из четырнадцати категорий\n", encoding="utf-8")
+
+    result = _run(str(layout / script.name))
+
+    assert result.returncode == 1
+    assert "UNLINKED DOC" in result.stdout and "docs/ORPHAN.md" in result.stdout
+    assert "MISSING MARKER" in result.stdout and "[-FOO-]" in result.stdout

@@ -2,6 +2,25 @@
 
 ### Changed
 
+- **The READMEs describe the product again.** They had no scheduler, no network diagnostics, no
+  assistant-written files, no document sharing and no panel-installed skills, and the TL;DR still
+  said eleven router categories while the prompt had fourteen. Both languages now cover them, the
+  router table gained `[-NET-]`, `[-SCHEDULE-]` and `[-WRITE-]`, the documentation table links
+  SCHEDULER, NET_TOOLS, SKILLS and GRAPH, and the profile table carries the measured netdiag
+  footprint (~11 MiB) instead of presenting optional profiles as part of the core.
+  `check_readme_features.py` keeps it that way: every `docs/` page linked, every router marker in
+  both files, the category count matched to the router, and 27 capability phrases checked per
+  language.
+
+- **The assistant's description of itself caught up with the product.** `prompts/{en,ru}/skills.txt`
+  — the list injected as `{skills_section}`, which the model answers "what can you do?" from —
+  named ten things and omitted page reading, crawling, network diagnostics, reminders, file
+  writing and rollback, deep analysis, background tasks, long-term memory and skills. All of them
+  worked; none were mentioned, so the assistant could not offer them. Both languages now carry 18
+  capabilities, and `check_skills_coverage.py` derives the inventory from `_EXECUTOR_MAP` (23
+  tools) and `TOOL_SPECS` (16 task capabilities), failing when a tool or capability has no line,
+  when a phrase disappears from either language, or when the two lists differ in length.
+
 - **The type check runs and blocks CI.** `mypy app/ modules/` was advisory (`|| true`) and, as
   configured, did not run at all: `python_version = "3.11"` met numpy 2.5's stub, written with
   PEP 695 syntax, and mypy aborted before reaching `app/`. It now targets 3.12 — the runtime is

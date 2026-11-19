@@ -16,6 +16,9 @@ Two modes:
 
 Never silently fix, merge, commit, push, tag, or touch the database.
 
+Feature work that lands on this release line is designed, planned and executed
+through `implementing-flai-change`; this skill starts at the merge.
+
 ## Helper scripts
 
 Run these from the repository root. They are read-only and exit non-zero when they find a problem: `0` clean, `1` findings, `2` usage or git error.
@@ -33,6 +36,8 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_behaviour_claims.py --list
 python3 .opencode/skills/preparing-flai-release/scripts/check_deploy_keys.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_mypy_ratchet.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_skills_coverage.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_readme_features.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
@@ -57,6 +62,20 @@ the documentation mentions, and a `with-…` compose profile no compose file def
 and `--with-crawler` were implemented and absent from both usage texts, `--with-net-tools`
 was missing from the Russian usage and from the agent skill, and the Russian block had lost
 its indentation. A key one language implements and the other does not is a finding too.
+
+`check_readme_features.py` is the same idea for the public description. It requires every
+`docs/*.md` to be linked from the README of its language, every router marker to appear in
+both, the TL;DR's category count to match the highest category in the prompt, and a fixed
+list of user-facing capabilities to be named. Measured at v13.6: the READMEs had no
+scheduler, network diagnostics, assistant-written files, document sharing or panel-installed
+skills, and still said eleven categories while the router had fourteen.
+
+`check_skills_coverage.py` derives the capability inventory from `_EXECUTOR_MAP` and
+`TOOL_SPECS` and compares it with `prompts/{en,ru}/skills.txt` — the list the model answers
+"what can you do?" from. Measured: the list named ten things while page reading, crawling,
+network diagnostics, reminders, file writing, deep analysis, background tasks, memory and
+skills all worked. An unowned tool, a missing phrase in either language, or lists of unequal
+length is a finding.
 
 `check_mypy_ratchet.py` reads the `ignore_errors` list from `pyproject.toml`, checks those
 modules again with the silence lifted, and fails when an entry reports nothing — a fixed
@@ -697,6 +716,8 @@ Check and record evidence:
 | Documented behaviour matches the call | `check_behaviour_claims.py` (+ `--list` read by hand) | PASS / FAIL |
 | Deployment keys agree across scripts, usage and the agent skill | `check_deploy_keys.py` | PASS / FAIL |
 | The type check runs and only shrinks | `check_mypy_ratchet.py` | PASS / FAIL |
+| The self-description covers every capability | `check_skills_coverage.py` | PASS / FAIL |
+| The READMEs describe the product | `check_readme_features.py` | PASS / FAIL |
 | Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
 | Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
 | Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |

@@ -11,7 +11,7 @@
   - 🌐 I open a specific page and read it on request, or study a site section by section.
   - 🩺 I diagnose networks: DNS, whois, ping, traceroute, open ports, HTTP/TLS and link speed (when the diagnostics service is connected and enabled for your account).
   - ⏰ I set reminders and deferred actions, one-off or recurring, and carry out the work at the set time.
-  - 📝 I create files for you — Markdown, CSV, JSON, plain text, Word, Excel and PDF — change them later, and roll a change back.
+  - 📝 I create files for you — Markdown, CSV, JSON, plain text, Word, Excel, PDF and SVG, including diagrams and charts — change them later, and roll a change back.
   - 🧠 I run deep analysis over selected documents: step by step, with code execution and web lookups.
   - 🗂️ I take on background tasks that run step by step while you do something else.
   - 💾 I remember durable facts about you across conversations (when long-term memory is on).

@@ -484,7 +484,7 @@ PREVIEW_MAX_CHARS = 200_000
 _CHARSET_RE = re.compile(rb"charset\s*=\s*[\"']?\s*([A-Za-z0-9_.:-]+)", re.I)
 _PREVIEW_TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".xml"}
 _PREVIEW_EXTRACTED_EXTS = {".pdf", ".doc", ".docx", ".odt", ".rtf", ".epub", ".html", ".htm", ".xlsx", ".xls", ".pptx", ".fb2", ".eml"}
-_PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
+_PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif", ".svg"}
 
 
 def _html_charset(body: bytes) -> str:
@@ -595,13 +595,20 @@ def api_document_preview(doc_id):
 
 @bp.route("/documents/<doc_id>/preview/file", methods=["GET"])
 def api_document_preview_file(doc_id):
-    """Serve a PDF/image inline for the preview iframe (never HTML)."""
+    """Serve a PDF, raster image or generated SVG inline for the preview iframe.
+
+    An SVG is an image the browser renders, but it is also executable content when
+    navigated to directly. The sandbox CSP below keeps the preview safe without
+    breaking the <img> the panel uses.
+    """
     doc, file_path, error = _owned_document_file(doc_id)
     if error:
         return error
     ext = os.path.splitext(doc["file_path"])[1].lower()
     if ext == ".pdf":
         mimetype = "application/pdf"
+    elif ext == ".svg":
+        mimetype = "image/svg+xml"
     elif ext in _PREVIEW_IMAGE_EXTS:
         mimetype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
     else:
@@ -612,7 +619,16 @@ def api_document_preview_file(doc_id):
     # those headers off this response only.
     response.headers["X-Own-CSP"] = "1"
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+    if ext == ".svg":
+        # An SVG opened directly would execute a script in the panel's origin. The
+        # writer refuses scripts/external references, and this CSP is the second lock:
+        # an opaque origin, no scripts, no network, inline styles only.
+        response.headers["Content-Security-Policy"] = (
+            "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+            "font-src data:; frame-ancestors 'self'"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
     return response
 
 
@@ -794,7 +810,8 @@ def set_document_indexing(doc_id):
     A generated document is stored unindexed: a log that grows every few minutes would
     otherwise be re-indexed on every append and fill the graph with entities nobody asked
     for. The switch belongs only to those documents — an upload is indexed on arrival and
-    has no box to untick.
+    has no box to untick. An SVG is generated but has no switch either: a drawing's markup
+    is not a text corpus.
     """
     login = session.get("login")
     if not login:
@@ -804,6 +821,9 @@ def set_document_indexing(doc_id):
         return jsonify({"error": "⚠️ " + _("Document not found")}), 404
     if doc.get("source") != "generated":
         return jsonify({"error": "⚠️ " + _("Only a document written by the assistant has this switch")}), 400
+    if str(doc.get("file_ext") or "").lower().lstrip(".") == "svg":
+        # The markup of a drawing is not a text corpus; indexing it would only add noise.
+        return jsonify({"error": "⚠️ " + _("SVG documents are not indexed")}), 400
 
     enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
 

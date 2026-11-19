@@ -82,21 +82,22 @@ file written on nearly every answer would otherwise fill RAG and the graph with 
 output. The index switch on the card is the one place that puts such a document into
 search and the knowledge graph, through the same path as an upload and under the same
 `GRAPH_AUTO_EXTRACT` switch; switching it off takes the document out again without
-deleting it.
+deleting it. An SVG is the exception: it has no switch and is never indexed.
 
 | | |
 |---|---|
 | Text formats | `.md` (default), `.csv`, `.json`, `.txt` |
+| Vector graphics | `.svg` — stored as text, previewed as an image, and never indexed |
 | Containers | `.docx` (Word), `.xlsx` (spreadsheet), `.pdf` (fixed layout) |
 | Tables | the model passes `rows` — a list of rows, each a list of cells — so a comma or a quote inside a value cannot corrupt the file; `xlsx` also takes `sheets`, each `{name, rows}` |
 | JSON | validated before writing: a file that does not parse is refused instead of stored |
 | Size | text at most 256 KB per call; a rendered container at most 5 MB |
 | Formulas | a cell that starts with `=`, `+`, `-` or `@` is stored as text (prefixed with `'`), so a generated spreadsheet cannot execute what the model wrote |
-| Append | text only: a `.docx`/`.xlsx`/`.pdf` is rewritten by its structure, not by bytes at the end, so the tool writes a new file instead |
+| Append | text only: a `.docx`/`.xlsx`/`.pdf` is rewritten by its structure, not by bytes at the end, so the tool writes a new file instead; an `.svg` is one XML document and is edited rather than appended |
 | Name | a display name only; the server strips any path, caps it at 120 characters and appends the extension |
 | Collision | a name the user already has gets ` (2)`, ` (3)` — a generated file never overwrites another |
 | Quota | checked **before** anything is written, against the same document quota as an upload |
-| Preview | text is shown as plain text (Markdown is not rendered); a container opens in its own reader |
+| Preview | text is shown as plain text (Markdown is not rendered); an image, including SVG, opens as an image; a container opens in its own reader |
 | PDF font | DejaVu is embedded, so Russian text is real text, not empty boxes; an image without the font refuses the render instead |
 
 A document written this way carries `source = 'generated'`, and the panel marks it with a
@@ -104,9 +105,18 @@ badge. The `source` column distinguishes all four origins — `upload`, `crawl` 
 crawler saved), `chat` (a file attached to a message) and `generated`. Rows that predate
 the column read `upload`; nothing can tell them apart retroactively.
 
+An SVG is stored as text but behaves as a picture: the panel previews it as an image and
+CSS animation inside it plays. It is **never indexed** — a drawing's markup is not a text
+corpus, and the index switch is absent from its card. The writer validates the SVG before
+storing it: scripts, event handlers, external references, `foreignObject`, a doctype and
+SMIL animation are refused, and `url(...)` may only point at a local `#id`. The preview is
+served with a sandbox CSP, so a stored drawing is safe both in the panel and when opened
+on its own.
+
 Ask for it in plain language — "put a report together from these contracts and give it to
-me as a file", "save that as a table". The tool answers with the stored name and the size,
-and reminds you about the index switch; until it is ticked the file is not searched.
+me as a file", "save that as a table", "draw the queue as a diagram". The tool answers
+with the stored name and the size, and reminds you about the index switch; until it is
+ticked the file is not searched. An SVG answer says it is not indexed instead.
 
 ### Editing one, and going back
 

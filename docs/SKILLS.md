@@ -18,7 +18,10 @@ skills/
 ├── net-diagnostics/
 │   ├── SKILL.md
 │   └── SKILL.ru.md
-└── documents/
+├── documents/
+│   ├── SKILL.md
+│   └── SKILL.ru.md
+└── svg-graphics/
     ├── SKILL.md
     └── SKILL.ru.md
 ```

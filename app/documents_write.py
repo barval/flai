@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from flask import current_app
 
 from app import db
+from app.svg_safety import SvgValidationError, validate_svg
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ MAX_CONTENT_BYTES = 256 * 1024
 # A log may grow past one call's payload, but not without end: an unbounded file inside
 # the document store is a disk leak with a friendly name.
 MAX_APPEND_BYTES = 2 * 1024 * 1024
-TEXT_FORMATS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
+TEXT_FORMATS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt", "svg": ".svg"}
 # Binary containers are rendered, not encoded: the model's input is still text/rows.
 BINARY_FORMATS = {"docx": ".docx", "xlsx": ".xlsx", "pdf": ".pdf"}
 FORMAT_EXTENSIONS = {**TEXT_FORMATS, **BINARY_FORMATS}
@@ -184,6 +185,12 @@ def _payload(content: str, fmt: str, rows: list[list[str]] | None) -> str:
     if fmt == "json":
         json.loads(content)  # a generated file that does not parse is worse than none
         return content
+    if fmt == "svg":
+        try:
+            validate_svg(content)
+        except SvgValidationError as exc:
+            raise DocumentWriteError(exc.code, exc.detail) from exc
+        return content
     return content
 
 
@@ -233,6 +240,9 @@ def write_document_file(
         # Appending a PDF or a zip container means rewriting the structure, not
         # writing bytes at the end: that is an edit, not a growing log.
         raise DocumentWriteError("append_binary", format_key)
+    if append and format_key == "svg":
+        # One SVG is one XML document: a second root would make it unparseable.
+        raise DocumentWriteError("append_svg", format_key)
 
     data = _render(format_key, content, rows, sheets)
     # Appending writes text; a container never reaches it (refused above).

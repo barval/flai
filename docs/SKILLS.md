@@ -12,9 +12,15 @@ them works here, and one written here works there.
 
 ```
 skills/
-└── web-research/
-    ├── SKILL.md        # English, required
-    └── SKILL.ru.md     # Russian, optional
+├── web-research/
+│   ├── SKILL.md        # English, required
+│   └── SKILL.ru.md     # Russian, optional
+├── net-diagnostics/
+│   ├── SKILL.md
+│   └── SKILL.ru.md
+└── documents/
+    ├── SKILL.md
+    └── SKILL.ru.md
 ```
 
 ```markdown
@@ -83,6 +89,18 @@ dropped rather than waited out.
 
 A skill never overrides a pipeline intent: crawl, document search, history, memory and
 media actions are decided before any skill is considered.
+
+## When a skill is offered
+
+A skill is offered only while its tools exist. If **every** name in `allowed-tools` is missing
+from the live tool catalogue, the skill is left out of the catalogue the prompt receives —
+network diagnostics without its sidecar, a site-reading skill without the crawler. A skill that
+names no tools is always offered: what it needs is decided by its instructions.
+
+Per-user permissions are deliberately not part of this filter. The network tools are advertised
+to everyone who can chat, a call from an account without the permission is refused with a
+sentence, and the skill's own first rule is to say that once and stop. Hiding by permission
+would give one idea two implementations — the camera and MCP paths already work this way.
 
 ## What the tool marks mean
 

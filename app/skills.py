@@ -70,7 +70,20 @@ def reset_cache() -> None:
 # Tools that exist in the catalogue but only when their service is running.
 # A skill naming one of these is correct and stays correct when the service
 # comes back, so it is a warning rather than a mistake.
-OPTIONAL_TOOLS = frozenset({"read_page", "list_rooms", "camera_snapshot"})
+OPTIONAL_TOOLS = frozenset(
+    {
+        "read_page",
+        "list_rooms",
+        "camera_snapshot",
+        "net_dns",
+        "net_whois",
+        "net_ping",
+        "net_trace",
+        "net_ports",
+        "net_http",
+        "net_speed",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -256,9 +269,25 @@ def active_skills(ttl_s: int = CACHE_TTL_S) -> list[Skill]:
     return [s for s in discover_all(ttl_s=ttl_s) if not s.shadowed and s.name not in disabled]
 
 
-def catalog(lang: str = "en", root: Path | str | None = None) -> str:
-    """The lines that go into every system prompt: name and description only."""
+def catalog(
+    lang: str = "en",
+    root: Path | str | None = None,
+    available: set[str] | None = None,
+) -> str:
+    """The lines that go into every system prompt: name and description only.
+
+    ``available`` is the live tool catalogue. A skill whose every ``allowed-tools`` name is
+    missing from it cannot do its work, so it is not offered: network diagnostics without its
+    sidecar, a site-reading skill without the crawler. A skill that names no tools is never
+    hidden — what it needs is decided by its instructions.
+    """
     skills = active_skills() if root is None else discover(root)
+    if available is not None:
+        skills = [
+            skill
+            for skill in skills
+            if not skill.allowed_tools or any(name in available for name in skill.allowed_tools)
+        ]
     if not skills:
         return ""
     lines = [f"- `{skill.name}`: {skill.for_lang(lang)[0]}" for skill in skills]

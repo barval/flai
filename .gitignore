@@ -22,6 +22,10 @@ __pycache__/
 data/rag_eval/
 uploads/
 documents/
+# A bundled skill is instructions, not user data: the rule above matches any directory
+# named `documents`, including this one, so the skill folder is re-included explicitly.
+!skills/documents/
+!skills/documents/**
 
 # Services models
 services/llamacpp/models/

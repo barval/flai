@@ -35,6 +35,18 @@
 
 ### Added
 
+- **Two built-in skills: network diagnostics and documents.** `net-diagnostics` carries the
+  order of checks (DNS first, then ping, trace, ports, HTTP, whois, and speed only when asked),
+  what counts as proof and what does not, the one-host-per-call rule, and the refusal path.
+  `documents` carries when an answer should become a file, which format fits, that a generated
+  document can be edited and rolled back while an upload is only ever rebuilt under a new name,
+  and that indexing a generated file is a manual switch. A skill is now offered only while its
+  tools exist: `catalog(available=…)` drops a skill whose every `allowed-tools` name is missing
+  from the live catalogue, so `net-diagnostics` disappears when the sidecar is off; a skill
+  with no tools is never hidden. Per-user permission deliberately does not hide it — the tools
+  stay advertised and `execute_tool` refuses with a sentence, as for the camera. Tests:
+  `tests/test_skills_availability.py`.
+
 - **The assistant can change what it wrote.** `edit_document` replaces the body of a generated
   document and `restore_document_version` brings an earlier state back. An upload is refused
   rather than edited: its bytes may be shared with everyone the document is shared with, so a

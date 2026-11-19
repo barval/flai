@@ -763,11 +763,20 @@ def _context_with_skills(digest: str, skills, lang: str) -> str:
 
 
 def _skills_catalog(lang: str = "ru") -> str:
-    """The installed, enabled skills as name + one line, for the planner."""
+    """The installed, enabled skills as name + one line, for the planner.
+
+    The same availability filter as the chat prompt: a skill whose tools are all absent
+    cannot run, so naming it in a plan would send the step nowhere.
+    """
     try:
         from app.skills import catalog
+        from app.tools import get_tool_definitions
 
-        return catalog(lang)
+        try:
+            available = {item["function"]["name"] for item in get_tool_definitions(lang)}
+        except Exception:  # noqa: BLE001 - no catalogue means no filtering
+            available = None
+        return catalog(lang, available=available)
     except Exception:  # noqa: BLE001 - no catalog is a normal state
         return ""
 

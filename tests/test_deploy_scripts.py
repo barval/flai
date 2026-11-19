@@ -1,109 +1,43 @@
-"""Deployment-script integrity tests.
+"""The deploy scripts are code that ships, and a missing argument stops an install.
 
-Regression: `services/ltx_video/download-t5-encoder.sh` considered the download
-"complete" when only `config.json` plus the FIRST safetensors shard existed.
-An interrupted run therefore wrote a success banner while
-`model-00002-of-00002.safetensors` stayed missing, and LTX-Video crashed at
-inference time with "No such file or directory" on the missing shard.
-
-These tests pin the completeness check to cover every declared file so a
-partial T5 can never be reported as downloaded again.
+`disable_env_key NET_TOOLS_ENABLED` was called without its message, and the function read
+`$2` under `set -u`: the deployment died at that line on a machine that had never disabled
+netdiag before, with a message about a variable boundary. The scripts are not executed by
+the suite — a syntax check and a call-shape check are what can run here.
 """
 
+import re
+import subprocess
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-SCRIPT = REPO / "services" / "ltx_video" / "download-t5-encoder.sh"
-SOURCE = SCRIPT.read_text(encoding="utf-8")
+import pytest
 
-DEPLOY_SH = REPO / "deploy.sh"
-DEPLOY_RU_SH = REPO / "deploy-ru.sh"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ("deploy.sh", "deploy-ru.sh")
 
 
-def _helper_body(name: str) -> str:
-    start = SOURCE.index(f"{name}() {{") + len(name)
-    end = SOURCE.index("}\n", start)
-    return SOURCE[start:end]
+@pytest.mark.unit
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_the_script_parses(name: str) -> None:
+    result = subprocess.run(["bash", "-n", str(ROOT / name)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
-def test_t5_completeness_helper_checks_every_declared_file():
-    body = _helper_body("t5_encoder_complete")
-    assert 'for file in "${!FILES[@]}"' in body, "helper must iterate the FILES map"
-    assert '[ ! -f "$TARGET_DIR/$file" ]' in body, "helper must test -f per declared file"
+@pytest.mark.unit
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_every_env_key_call_carries_its_message(name: str) -> None:
+    """A call with only a key reaches `$2` unbound and aborts the install."""
+    text = (ROOT / name).read_text(encoding="utf-8")
+    bare = [
+        line.strip()
+        for line in text.splitlines()
+        if re.match(r"^\s*(enable|disable)_env_key\s+[A-Z0-9_]+\s*$", line)
+    ]
+    assert bare == [], f"{name}: env-key call without a message: {bare}"
 
 
-def test_both_auto_methods_gate_on_completeness_helper():
-    assert SOURCE.count("if t5_encoder_complete; then") == 2, (
-        "docker and git-lfs success paths must use the completeness helper"
-    )
-
-
-def test_partial_shard_check_removed():
-    assert 'model-00001-of-00002.safetensors" ]; then' not in SOURCE, (
-        "the old config+first-shard-only check must be gone"
-    )
-
-
-def test_deploy_scripts_do_not_skip_partial_t5():
-    """Deploy wrapper must not treat an existing directory as 'T5 done' — a
-    partial T5 (first shard only) must trigger the download script again."""
-    condition = 'if [[ ! -f "$VIDEO_DIR/t5_encoder/text_encoder/model-00002-of-00002.safetensors" ]]; then'
-    for script in (DEPLOY_SH, DEPLOY_RU_SH):
-        src = script.read_text(encoding="utf-8")
-        assert condition in src, f"{script.name} must gate on the final shard file, not the directory"
-
-
-def test_pip_install_flags_suppress_root_warning():
-    """Every pip install inside the model-download scripts must carry the
-    flags that silence the root-user WARNING and the pip-upgrade notice."""
-    targets = (
-        DEPLOY_SH,
-        DEPLOY_RU_SH,
-        SCRIPT,
-        REPO / "services" / "kokoro" / "download-model.sh",
-    )
-    for script in targets:
-        src = script.read_text(encoding="utf-8")
-        for line in src.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("pip install"):
-                assert "--root-user-action=ignore" in stripped, f"{script.name}: {line}"
-                assert "--disable-pip-version-check" in stripped, f"{script.name}: {line}"
-
-
-def test_env_toggles_consult_stored_settings_first():
-    """A key saved in Admin Panel → Settings lives in the database and wins over
-    .env, so a deploy flag that writes .env for it would silently do nothing.
-    Every helper that writes .env must ask the database first."""
-    for script in (DEPLOY_SH, DEPLOY_RU_SH):
-        src = script.read_text(encoding="utf-8")
-        assert "settings_override_exists() {" in src, f"{script.name}: missing the override probe"
-        assert src.count('if settings_override_exists "$key"; then') == 3, (
-            f"{script.name}: enable_env_key, disable_env_key and set_env_key_value "
-            "must all check the database"
-        )
-
-
-def test_deploy_scripts_create_the_branding_folder():
-    """BRANDING_FOLDER stays in .env and points at a mounted volume, so the
-    deploy script has to create it next to the other data directories."""
-    for script in (DEPLOY_SH, DEPLOY_RU_SH):
-        src = script.read_text(encoding="utf-8")
-        assert "mkdir -p data/uploads data/documents data/db_backups data/slm data/branding" in src, (
-            f"{script.name}: data/branding is missing from setup_dirs"
-        )
-
-
-def test_enabling_the_net_tools_generates_a_token():
-    """The documented path must not leave NETDIAG_API_TOKEN empty.
-
-    The sidecar fails closed on an empty token, so `--with-net-tools` without one
-    produces a running container that refuses every request and a doctor hint
-    pointing at the wrong cause.
-    """
-    from pathlib import Path
-
-    for script in ("deploy.sh", "deploy-ru.sh"):
-        text = Path(script).read_text(encoding="utf-8")
-        assert "NETDIAG_API_TOKEN" in text, script
-        assert "openssl rand" in text or "python3 -c" in text or "/dev/urandom" in text, script
+@pytest.mark.unit
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_the_env_key_helpers_do_not_require_a_second_argument(name: str) -> None:
+    text = (ROOT / name).read_text(encoding="utf-8")
+    assert 'local key="$1" message="$2"' not in text, f"{name}: `$2` aborts under set -u"

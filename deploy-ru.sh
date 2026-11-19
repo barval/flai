@@ -104,7 +104,7 @@ warn_env_override() {
 
 # Включить ключ: раскомментировать строку в .env, при необходимости заменив значение.
 enable_env_key() {
-    local key="$1" message="$2" value="${3:-}"
+    local key="$1" message="${2:-}" value="${3:-}"
     if settings_override_exists "$key"; then
         warn_env_override "$key"
         return 0
@@ -142,7 +142,7 @@ set_env_key_value() {
 KEEP_ENV_KEYS=false
 
 disable_env_key() {
-    local key="$1" message="$2"
+    local key="$1" message="${2:-}"
     if [[ "$KEEP_ENV_KEYS" == "true" ]]; then
         grep -qE "^${key}=" .env 2>/dev/null || return 0
         info "Оставляю ${key}: существующий .env не перезаписываю (--strict-stack выключит неиспользуемые сервисы)."
@@ -189,7 +189,7 @@ enable_env_features() {
                 info "Сгенерирован NETDIAG_API_TOKEN в .env"
             fi
     else
-        disable_env_key NET_TOOLS_ENABLED
+        disable_env_key NET_TOOLS_ENABLED "Отключаю сетевую диагностику (netdiag) в .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Включаю долговременную память (SLM) в .env..."

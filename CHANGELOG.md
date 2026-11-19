@@ -1,4 +1,4 @@
-## [v13.6] — Unreleased
+## [v13.6] — 2026-11-19
 
 ### Changed
 
@@ -105,6 +105,22 @@
   of being silently ignored. The old `weekday` column is folded into the array and dropped on
   the first start after the upgrade. Tests: `tests/test_scheduler_recurrence.py`,
   `tests/test_scheduler_tools.py`.
+
+### Migration
+
+- **`scheduler_items.weekday` is dropped on the first start after the upgrade.** The column held
+  one weekday for a weekly item and `weekdays SMALLINT[]` replaces it. `init_db()` adds the array,
+  copies the old value into it for every weekly row that has none, and only then drops the column,
+  so no stored schedule is lost — but the drop is permanent and runs on every installation the
+  moment the new version boots. Take the usual backup first, and count what is affected on a copy
+  of the real schema:
+
+  ```
+  SELECT count(*) FROM scheduler_items WHERE repeat = 'weekly' AND weekday IS NOT NULL;
+  ```
+
+  The change exists because two columns held the same agreement and an edit could leave the second
+  copy behind.
 
 ## [v13.5] — 2026-11-19
 

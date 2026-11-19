@@ -81,6 +81,31 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **The assistant can change what it wrote — and draw.** A document it created can be edited in
+  place and rolled back to an earlier state: the last ten versions are kept, a restore is itself a
+  new version, and a repaired `.docx`, `.xlsx` or `.pdf` is re-rendered from the stored body
+  instead of being patched byte by byte. An uploaded file is still never edited in place — its
+  bytes may be shared — so a fix is answered by a new document built from it. `write_document`
+  also gained **SVG**: a diagram, chart or icon is stored as a document, validated before it is
+  saved (no scripts, event handlers, external references or animation) and previewed as an image.
+  → [DOCUMENTS.md](docs/DOCUMENTS.md)
+
+- **Skills: four bundled procedures, and an honest account of what the assistant can do.** Chat can
+  load `net-diagnostics` (the order of network checks, what counts as proof and when to say the
+  service is unavailable), `documents` (when an answer should become a file and which format fits)
+  and `svg-graphics` (layouts, charts and CSS-only animation) beside `web-research`. A skill whose
+  tools are absent from the installation is no longer offered at all, so the assistant cannot
+  promise diagnostics it cannot run. Its self-description grew from ten capabilities to eighteen:
+  page reading, crawling, reminders, file writing and rollback, deep analysis, background tasks and
+  memory were all missing from the answer to "what can you do?". → [SKILLS.md](docs/SKILLS.md)
+
+- **Schedules follow the agreement, not the moment.** "Every Tuesday and Thursday at 19:45" is now
+  one weekly item holding a **set** of days instead of a single day guessed from when the sentence
+  was written, so editing or deleting it cannot leave a second copy behind. An action is queued
+  ahead of time by the **median of its own last five runs** plus a margin, bounded by ten minutes
+  and half the interval: a four-minute check no longer runs late by design while a two-second probe
+  holds the queue. → [SCHEDULER.md](docs/SCHEDULER.md)
+
 ## 🖼 Demo
 
 Four self-contained pages show the interface without installing anything — download a file

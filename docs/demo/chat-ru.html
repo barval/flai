@@ -13059,7 +13059,7 @@ function renderDocItem(doc) {
             </div>
             <div class="document-side">
                 ${documentActions}
-                ${doc.source === 'generated' ? `
+                ${doc.source === 'generated' && !String(doc.filename || '').toLowerCase().endsWith('.svg') ? `
                 <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
                     <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
                     ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}

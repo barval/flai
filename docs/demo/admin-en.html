@@ -15549,7 +15549,9 @@ const STAGE_COUNTER_KEYS = {
 
 function getStageLabel(stage, count) {
     const key = STAGE_LABEL_KEYS[stage];
-    if (!key) return stage;
+    // A tab opened before an upgrade keeps the old map, while the server sends the
+    // new stage ids. An unknown id must not reach the user as an internal key.
+    if (!key) return t('stage_working');
     if (count !== undefined && count !== null && STAGE_COUNTER_KEYS[stage]) {
         const template = t(STAGE_COUNTER_KEYS[stage]);
         return template.indexOf('%s') !== -1 ? template.replace('%s', count) : template;

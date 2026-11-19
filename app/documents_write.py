@@ -64,6 +64,8 @@ class WrittenDocument:
     file_path: str
     absolute_path: str
     version: int = 0
+    # What the caller asked for, before an existing file pushed it to "name (2)".
+    requested_name: str = ""
 
 
 def _documents_root() -> str:
@@ -289,6 +291,7 @@ def write_document_file(
                 size=size,
                 file_path=existing["file_path"],
                 absolute_path=absolute,
+                requested_name=existing["filename"],
             )
 
         if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
@@ -333,6 +336,7 @@ def write_document_file(
         file_path=relative,
         absolute_path=absolute,
         version=1,
+        requested_name=wanted,
     )
 
 

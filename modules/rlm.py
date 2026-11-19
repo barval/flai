@@ -2,83 +2,18 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.leaked_calls import parse_leaked_tool_calls
 from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
 from app.tool_registry import sandbox_tool_definitions
 from app.utils import format_prompt
 from modules.base import response_language_name
-
-# Matches a tool call the model leaked as plain text instead of emitting a
-# structured tool_call (observed with Qwen3.6 on the tool-free final step):
-# <function=NAME>
-# <parameter=KEY>VALUE</parameter>
-# ...
-# </function>
-# The block is also seen as <tool_call><function=final>\nanswer="..." with no
-# closing tag at all — the parser must still recover the call and strip it.
-_LEAKED_FUNCTION_START_RE = re.compile(r"<function=(?P<name>\w+)\s*>", re.IGNORECASE)
-
-_LEAKED_PARAM_RE = re.compile(r"<parameter=(?P<key>\w+)\s*>(?P<value>[\s\S]*?)</parameter>")
-
-# Inline arguments: final(answer="..."), python(code="..."). Only quoted
-# assignments are treated as a leak so normal prose mentioning final(answer)
-# stays untouched.
-_LEAKED_ASSIGN_RE = re.compile(r'(?P<key>\w+)\s*=\s*"(?P<value>(?:[^"\\]|\\.)*)"')
-
-_LEAKED_WRAPPER_RE = re.compile(r"</?tool_call>", re.IGNORECASE)
-
-_LEAKED_TAIL_RE = re.compile(r"<(?:tool_call|function=\w+)[\s\S]*$", re.IGNORECASE)
-
-
-def _leaked_function_blocks(text: str) -> list[tuple[int, int, str, str]]:
-    """(start, end, name, body) for every printed <function=…> block.
-
-    ``end`` covers a closing ``</function>``/``</tool_call>`` when present and
-    the rest of the text otherwise — the unclosed tail is a real Qwen3.6
-    output shape, so it must not survive into the answer.
-    """
-    starts = list(_LEAKED_FUNCTION_START_RE.finditer(text))
-    blocks: list[tuple[int, int, str, str]] = []
-    for i, match in enumerate(starts):
-        body_start = match.end()
-        limit = starts[i + 1].start() if i + 1 < len(starts) else len(text)
-        segment = text[body_start:limit]
-        close = segment.find("</function>")
-        if close != -1:
-            body = segment[:close]
-            end = body_start + close + len("</function>")
-        else:
-            tool_close = segment.find("</tool_call>")
-            if tool_close != -1:
-                body = segment[:tool_close]
-                end = body_start + tool_close + len("</tool_call>")
-            else:
-                body = segment
-                end = len(text)
-        blocks.append((match.start(), end, match.group("name"), body))
-    return blocks
-
-
-def _leaked_args(body: str) -> dict[str, str]:
-    """Parameters from a leaked block: XML <parameter> or key="value" form."""
-    args: dict[str, str] = {}
-    for pm in _LEAKED_PARAM_RE.finditer(body):
-        args[pm.group("key")] = pm.group("value")
-    if not args:
-        for am in _LEAKED_ASSIGN_RE.finditer(body):
-            value = am.group("value")
-            with contextlib.suppress(TypeError, ValueError):
-                value = json.loads(f'"{value}"')
-            args[am.group("key")] = value
-    return args
 
 
 def _leaked_final_answer(calls: list[dict[str, Any]]) -> str:
@@ -95,42 +30,6 @@ def _leaked_final_answer(calls: list[dict[str, Any]]) -> str:
         if answer:
             return answer
     return ""
-
-
-def parse_leaked_tool_calls(text: str) -> tuple[list[dict[str, Any]], str]:
-    """Extract tool calls the model printed as text (Claude-style XML blocks).
-
-    Returns (tool_calls, remaining_text) where tool_calls follow the
-    OpenAI structure (id, function.name, JSON-serialized arguments dict)
-    and remaining_text is the input with the leaked blocks removed.
-    Calls with no <parameter> blocks (e.g. final(answer) inline form)
-    are parsed as {"answer": ...} from the block body.
-    """
-    calls: list[dict[str, Any]] = []
-    blocks = _leaked_function_blocks(text)
-    for idx, (_start, _end, name, body) in enumerate(blocks):
-        args = _leaked_args(body)
-        if not args:
-            body_text = body.strip()
-            if body_text:
-                args = {"answer": body_text} if name == "final" else {"code": body_text}
-        if args:
-            calls.append(
-                {
-                    "id": f"leaked_{idx}",
-                    "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
-                }
-            )
-    remaining = text
-    for start, end, _name, _body in reversed(blocks):
-        remaining = remaining[:start] + remaining[end:]
-    # Orphan closing tags / wrapper remnants and a still-unparseable tail must
-    # never reach the user as an «answer».
-    remaining = re.sub(r"</tool_call>\s*\"?", "", remaining)
-    remaining = re.sub(r"</?parameter>|</?function>", "", remaining)
-    remaining = _LEAKED_WRAPPER_RE.sub("", remaining)
-    remaining = _LEAKED_TAIL_RE.sub("", remaining)
-    return calls, remaining
 
 
 def strip_leaked_tool_text(text: str) -> str:

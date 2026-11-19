@@ -33,6 +33,7 @@ from .db import (
 from .engine.loop import Turn, run_tool_loop
 from .engine.session import ChatSession
 from .events import get_events_publisher
+from .leaked_calls import LeakedCallFilter, parse_leaked_tool_calls
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
 from .model_status import answer_model_type
@@ -46,6 +47,7 @@ from .tools import (
     parse_tool_arguments,
     repeated_call_message,
     select_tool_definitions,
+    transcript_safe_calls,
 )
 from .utils import (
     N_,
@@ -174,14 +176,29 @@ TOOL_STAGES: dict[str, str] = {
 }
 
 
-def tool_stage(tool_name: str, arguments: dict[str, Any] | None = None) -> str | None:
-    """The progress stage for one tool, or None when it needs no announcement.
+# `"format"` as it appears in a streamed argument string, before the JSON is complete.
+_FORMAT_IN_STREAM = re.compile(r'"format"\s*:\s*"([A-Za-z0-9]+)"')
 
-    A drawing is announced as a drawing: the format is an argument, so the label
-    can say what the model is composing rather than the generic "writing a
-    document". The call arrives before its arguments do, which is why `arguments`
-    is optional — the stage is announced when the name appears in the stream.
+
+def tool_stage_from_prefix(tool_name: str, arguments: str = "") -> str | None:
+    """The stage for a call whose arguments are still streaming, or None to wait.
+
+    A drawing must not be announced as "writing a document" for the 25 seconds the
+    model spends composing it. The format is the second field the model writes, so
+    the answer arrives about a second into the stream; until then there is nothing
+    honest to show and the previous stage stays. None means "call me again" — the
+    caller stops asking once a stage comes back.
     """
+    if tool_name == "write_document":
+        found = _FORMAT_IN_STREAM.search(arguments or "")
+        if not found:
+            return None
+        return "drawing_svg" if found.group(1).lower() == "svg" else "writing_document"
+    return TOOL_STAGES.get(tool_name)
+
+
+def tool_stage(tool_name: str, arguments: dict[str, Any] | None = None) -> str | None:
+    """The progress stage for a finished call, or None when it needs no announcement."""
     if tool_name == "write_document" and (arguments or {}).get("format") == "svg":
         return "drawing_svg"
     return TOOL_STAGES.get(tool_name)
@@ -5616,14 +5633,29 @@ class RedisRequestQueue:
                 publish=lambda event, payload: self._publish_stream_event(task, event, payload),
                 report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
             )
-        session.append_assistant(assistant_content, tool_calls)
-        last_tool_result = ""
         schemas = {item["function"]["name"]: item["function"].get("parameters") for item in get_tool_definitions(lang)}
-        for tc in tool_calls:
+        parsed_calls = [
+            (
+                tc,
+                parse_tool_arguments(
+                    tc.get("function", {}).get("arguments", "{}"),
+                    schemas.get(tc.get("function", {}).get("name", "")),
+                ),
+            )
+            for tc in tool_calls
+        ]
+        # An unparsable call must not enter the transcript as it is: llama-server
+        # re-parses every tool call in the history, so one malformed one makes the
+        # whole conversation fail with the same error on every later round, and the
+        # retry without tools cannot help because the poison is in the messages.
+        # The call is kept (the model must see that it was rejected) with empty
+        # arguments, which are valid JSON.
+        session.append_assistant(assistant_content, transcript_safe_calls(tool_calls, schemas))
+        last_tool_result = ""
+        for tc, (arguments, usable) in parsed_calls:
             tc_id = tc.get("id", "")
             func = tc.get("function", {})
             tool_name = func.get("name", "")
-            arguments, usable = parse_tool_arguments(func.get("arguments", "{}"), schemas.get(tool_name))
             if not usable:
                 # An unparsable call used to run with {} — a search with an empty
                 # query, which teaches the model nothing about what went wrong.
@@ -5775,15 +5807,22 @@ class RedisRequestQueue:
         # The label only changes for a call the model printed as text; the loop
         # hands the caller one kind of turn either way.
         current_label = {"value": "Tool call"}
+        announced: dict[str, str] = {}
 
-        def on_tool_call_started(tool_name: str) -> None:
+        def on_tool_call_started(tool_name: str, arguments: str = "") -> bool:
             # The model spends most of a document request composing the call
             # itself: the SVG in the previous round took 25 s before the tool
-            # ran for 0.6 s. The name arrives in the first delta, so the stage
-            # is announced there rather than after the work is done.
-            stage = tool_stage(tool_name)
-            if stage:
+            # ran for 0.6 s. The name arrives in the first delta and the format
+            # a moment later, so the stage is announced there — and refined to
+            # the drawing as soon as the format is readable. True means "the
+            # label is final", and the client stops asking.
+            stage = tool_stage_from_prefix(tool_name, arguments)
+            if stage is None:
+                return False
+            if announced.get(tool_name) != stage:
+                announced[tool_name] = stage
                 session.report_stage(stage)
+            return True
 
         def generate(round_tool_choice: str | None) -> Turn:
             if not stream:
@@ -5811,6 +5850,7 @@ class RedisRequestQueue:
             iteration_text = ""
             error_detected = False
             stream_tool_calls: list[dict[str, Any]] | None = None
+            leak_filter = LeakedCallFilter()
             for chunk in llamacpp.chat_stream(
                 messages,
                 model_type="multimodal",
@@ -5828,11 +5868,30 @@ class RedisRequestQueue:
                     if self._is_llm_error_string(iteration_text):
                         error_detected = True
                     else:
-                        session.on_token(chunk)
+                        visible = leak_filter.feed(chunk)
+                        if visible:
+                            session.on_token(visible)
                 if self._is_task_cancelled(task["id"]):
                     break
+                if leak_filter.leaked:
+                    # The model started printing the call as text — measured, a whole
+                    # SVG inside an escaped parameter. The rest is noise the user must
+                    # not watch, and stopping here is what ends the "hang".
+                    break
+            if not leak_filter.leaked and not error_detected:
+                tail = leak_filter.flush()
+                if tail:
+                    session.on_token(tail)
             if error_detected:
                 return Turn(error=iteration_text)
+            if leak_filter.leaked:
+                calls, remaining = parse_leaked_tool_calls(iteration_text)
+                self.logger.warning(
+                    f"Tool call printed as text: recovered {[c['function']['name'] for c in calls]}"
+                )
+                if not stream_tool_calls and calls:
+                    return Turn(text=remaining, tool_calls=calls)
+                return Turn(text=remaining, tool_calls=stream_tool_calls or [])
             return Turn(text=iteration_text, tool_calls=stream_tool_calls or [])
 
         def execute(tool_calls: list[dict[str, Any]], assistant_content: str) -> str:

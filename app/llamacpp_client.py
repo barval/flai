@@ -649,7 +649,7 @@ class AbstractLlamaBackend:
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
-        tool_call_started: Callable[[str], None] | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
@@ -793,7 +793,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
-        tool_call_started: Callable[[str], None] | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -936,10 +936,14 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                                     tc["id"] = tc_delta["id"]
                             name_so_far = _tool_calls_by_index[idx]["function"]["name"]
                             if name_so_far and idx not in _tool_call_notified and tool_call_started is not None:
-                                _tool_call_notified.add(idx)
+                                # Called on every delta until it says the label is final:
+                                # the name is known first, the format a moment later.
+                                args_so_far = _tool_calls_by_index[idx]["function"]["arguments"]
                                 try:
-                                    tool_call_started(name_so_far)
-                                except Exception:  # noqa: BLE001 - a progress reporter must not break the stream
+                                    if tool_call_started(name_so_far, args_so_far):
+                                        _tool_call_notified.add(idx)
+                                except Exception:  # noqa: BLE001 - a reporter must not break the stream
+                                    _tool_call_notified.add(idx)
                                     self.logger.warning("tool_call_started callback failed", exc_info=True)
                 except json.JSONDecodeError:
                     continue
@@ -1264,7 +1268,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
-        tool_call_started: Callable[[str], None] | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1480,10 +1484,12 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                         and idx not in _tool_call_notified
                                         and tool_call_started is not None
                                     ):
-                                        _tool_call_notified.add(idx)
+                                        args_so_far = _tool_calls_by_index[idx]["function"]["arguments"]
                                         try:
-                                            tool_call_started(name_so_far)
+                                            if tool_call_started(name_so_far, args_so_far):
+                                                _tool_call_notified.add(idx)
                                         except Exception:  # noqa: BLE001 - a reporter must not break the stream
+                                            _tool_call_notified.add(idx)
                                             self.logger.warning(
                                                 "tool_call_started callback failed", exc_info=True
                                             )
@@ -1821,7 +1827,7 @@ class LlamaCppClient:
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
-        tool_call_started: Callable[[str], None] | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)

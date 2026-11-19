@@ -80,7 +80,12 @@ def test_the_stream_announces_the_call_before_any_argument(monkeypatch):
     ]
     monkeypatch.setattr(client.requests, "post", lambda *a, **kw: _FakeStream(lines))
 
-    seen: list[str] = []
+    seen: list[tuple[str, str]] = []
+
+    def on_call(name: str, arguments: str) -> bool:
+        seen.append((name, arguments))
+        return True
+
     backend = client.DirectLlamaBackend()
     chunks = list(
         backend.chat_stream(
@@ -90,9 +95,58 @@ def test_the_stream_announces_the_call_before_any_argument(monkeypatch):
             10,
             "ru",
             tools=[{"type": "function", "function": {"name": "write_document", "parameters": {}}}],
-            tool_call_started=seen.append,
+            tool_call_started=on_call,
         )
     )
 
-    assert seen == ["write_document"]
+    assert seen[0][0] == "write_document"
+    assert seen[0][1] == ""
     assert any(isinstance(chunk, dict) and chunk.get("type") == "tool_calls" for chunk in chunks)
+
+
+@pytest.mark.unit
+def test_the_stream_is_asked_again_until_the_label_is_final(monkeypatch):
+    """The name comes first, the format a moment later: the label must follow it."""
+    import app.llamacpp_client as client
+
+    lines = [
+        _sse({"tool_calls": [{"index": 0, "id": "call_1", "function": {"name": "write_document", "arguments": ""}}]}),
+        _sse({"tool_calls": [{"index": 0, "function": {"arguments": '{"name": "scene", '}}]}),
+        _sse({"tool_calls": [{"index": 0, "function": {"arguments": '"format": "svg"}'}}]}),
+        b"data: [DONE]",
+    ]
+    monkeypatch.setattr(client.requests, "post", lambda *a, **kw: _FakeStream(lines))
+
+    seen: list[tuple[str, str]] = []
+
+    def on_call(name: str, arguments: str) -> bool:
+        seen.append((name, arguments))
+        return "svg" in arguments  # the label is final only once the format is readable
+
+    list(
+        client.DirectLlamaBackend().chat_stream(
+            [{"role": "user", "content": "draw it"}],
+            "test-model",
+            {"context_length": 4096, "temperature": 0.7, "top_p": 0.9, "repeat_penalty": 1.1},
+            10,
+            "ru",
+            tools=[{"type": "function", "function": {"name": "write_document", "parameters": {}}}],
+            tool_call_started=on_call,
+        )
+    )
+
+    assert len(seen) >= 2
+    assert {name for name, _ in seen} == {"write_document"}
+    assert seen[0][1] == ""
+    assert "svg" in seen[-1][1]
+
+
+@pytest.mark.unit
+def test_the_stage_waits_for_a_format_it_can_read():
+    from app.queue import tool_stage_from_prefix
+
+    assert tool_stage_from_prefix("write_document", "") is None
+    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "sv') is None
+    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "svg"') == "drawing_svg"
+    assert tool_stage_from_prefix("write_document", '{"format": "md"') == "writing_document"
+    assert tool_stage_from_prefix("web_search", "") == "searching_web"

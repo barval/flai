@@ -12021,10 +12021,11 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_getting_time': "\ud83d\udd50 \u041f\u043e\u043b\u0443\u0447\u0430\u044e \u0432\u0440\u0435\u043c\u044f...",
     'stage_calculating': "\ud83d\udd22 \u0412\u044b\u0447\u0438\u0441\u043b\u044f\u044e...",
     'stage_calculating_date': "\ud83d\udcc5 \u0420\u0430\u0441\u0441\u0447\u0438\u0442\u044b\u0432\u0430\u044e \u0434\u0430\u0442\u0443...",
-    'stage_writing_document': "\u0421\u043e\u0437\u0434\u0430\u044e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442...",
-    'stage_drawing_svg': "\u0420\u0438\u0441\u0443\u044e \u0441\u0445\u0435\u043c\u0443...",
-    'stage_editing_document': "\u041f\u0440\u0430\u0432\u043b\u044e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442...",
-    'stage_restoring_document': "\u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u044e \u043f\u0440\u0435\u0436\u043d\u044e\u044e \u0432\u0435\u0440\u0441\u0438\u044e...",
+    'stage_writing_document': "\ud83d\udcc4 \u0421\u043e\u0437\u0434\u0430\u044e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442...",
+    'stage_drawing_svg': "\ud83c\udfa8 \u0420\u0438\u0441\u0443\u044e \u0441\u0445\u0435\u043c\u0443...",
+    'stage_editing_document': "\u270f\ufe0f \u041f\u0440\u0430\u0432\u043b\u044e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442...",
+    'stage_restoring_document': "\u21a9\ufe0f \u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u044e \u043f\u0440\u0435\u0436\u043d\u044e\u044e \u0432\u0435\u0440\u0441\u0438\u044e...",
+    'stage_working': "\u2699\ufe0f \u0420\u0430\u0431\u043e\u0442\u0430\u044e...",
     'stage_rlm_reading': "\ud83d\udd2c \u0413\u043b\u0443\u0431\u043e\u043a\u0438\u0439 \u0430\u043d\u0430\u043b\u0438\u0437: \u0447\u0438\u0442\u0430\u044e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
     'stage_rlm_step': "\ud83d\udd2c \u0413\u043b\u0443\u0431\u043e\u043a\u0438\u0439 \u0430\u043d\u0430\u043b\u0438\u0437: \u0444\u0430\u0437\u0430 %s",
     'stage_rlm_searching_web': "\ud83d\udd2c \u0413\u043b\u0443\u0431\u043e\u043a\u0438\u0439 \u0430\u043d\u0430\u043b\u0438\u0437: \u0438\u0449\u0443 \u0432 \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442\u0435",
@@ -19287,7 +19288,9 @@ const STAGE_COUNTER_KEYS = {
 
 function getStageLabel(stage, count) {
     const key = STAGE_LABEL_KEYS[stage];
-    if (!key) return stage;
+    // A tab opened before an upgrade keeps the old map, while the server sends the
+    // new stage ids. An unknown id must not reach the user as an internal key.
+    if (!key) return t('stage_working');
     if (count !== undefined && count !== null && STAGE_COUNTER_KEYS[stage]) {
         const template = t(STAGE_COUNTER_KEYS[stage]);
         return template.indexOf('%s') !== -1 ? template.replace('%s', count) : template;

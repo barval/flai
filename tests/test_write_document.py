@@ -64,7 +64,24 @@ def test_an_existing_name_gets_a_suffix_and_nothing_is_overwritten(writer_env):
 
     assert first.filename == "note.md"
     assert second.filename == "note (2).md"
+    # The caller asked for "note" both times; the result remembers what it asked for,
+    # which is what lets the tool explain the rename instead of hiding it.
+    assert second.requested_name == "note.md"
     assert (writer_env / LOGIN / f"{first.id}.md").read_text(encoding="utf-8").strip() == "one"
+
+
+def test_the_answer_explains_a_renamed_file(writer_env):
+    """Measured: the model told the user the name it asked for while the file had another."""
+    from app.tools import _exec_write_document
+
+    ctx = {"user_id": LOGIN, "lang": "ru"}
+    first = _exec_write_document(ctx, name="Схема", content="one", format="md")
+    second = _exec_write_document(ctx, name="Схема", content="two", format="md")
+
+    assert "Схема.md" in first
+    assert "занято" not in first
+    assert "Схема (2).md" in second
+    assert "занято" in second
 
 
 def test_csv_quotes_values_that_need_it(writer_env):

@@ -2,6 +2,23 @@
 
 ### Changed
 
+- **A malformed tool call no longer breaks the conversation.** Measured on a 19 KB SVG: the
+  arguments arrived with raw newlines inside the JSON string, the call was rejected — correctly —
+  but the rejected call was also written into the transcript, and llama-server re-parses every
+  tool call in the message history, so every later round failed with the same parse error and the
+  user was told "the model could not form a tool call". Two changes: control characters inside an
+  argument string are accepted (`json.loads(..., strict=False)`, which is the one deviation a
+  drawing needs), and a call that still does not parse enters the transcript with `{}` so the
+  model sees the rejection and can try again. Tests: `tests/test_tool_argument_repair.py`.
+
+- **A renamed document is reported as renamed.** The server never overwrites a name: an existing
+  one becomes "name (2)". Measured, the model then told the user the name it had asked for while
+  the tool result carried the real one, so the result now says why the name changed and
+  `chat.template` requires the exact name from a tool result. The document stages gained their
+  emoji (📄, 🎨, ✏️, ↩️), and a stage id the page does not know renders as "⚙️ Working…" instead of
+  the raw key — which is what a tab opened before an upgrade showed, because the stage map lives in
+  the browser. Tests: `tests/test_write_document.py`, `tests/test_tool_stages.py`.
+
 - **The READMEs describe the product again.** They had no scheduler, no network diagnostics, no
   assistant-written files, no document sharing and no panel-installed skills, and the TL;DR still
   said eleven router categories while the prompt had fourteen. Both languages now cover them, the

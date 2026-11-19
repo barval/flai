@@ -110,6 +110,13 @@ SVG is executable content, so the document writer validates it:
 If a write is refused, remove the offending construct and try again. Do not try to
 bypass the check.
 
+## Size
+
+- Keep one drawing under about 8 KB of markup: a few dozen elements, not a photograph made of
+  circles. Measured, a 19 KB scene took minutes to generate and broke its own tool call; the
+  same subject at 5–7 KB went through first time.
+- Prefer fewer, larger shapes and short repeated groups over thousands of coordinates.
+
 ## Before you answer
 
 - Does every label fit inside its shape at the chosen font size?

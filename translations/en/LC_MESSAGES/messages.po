@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.6\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 00:35+0300\n"
+"POT-Creation-Date: 2026-11-20 00:45+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -674,11 +674,11 @@ msgstr ""
 msgid "Unknown session"
 msgstr "Unknown session"
 
-#: app/scheduler.py:290 app/templates/chat.html:493
+#: app/scheduler.py:290 app/templates/chat.html:494
 msgid "🛠️ Scheduler: actions"
 msgstr "🛠️ Scheduler: actions"
 
-#: app/scheduler.py:291 app/templates/chat.html:492
+#: app/scheduler.py:291 app/templates/chat.html:493
 msgid "🔔 Scheduler: reminders"
 msgstr "🔔 Scheduler: reminders"
 
@@ -998,8 +998,8 @@ msgid "Calculation error: {error}"
 msgstr "Calculation error: {error}"
 
 #: app/tools.py:924 app/tools.py:993 app/tools.py:1035 app/tools.py:1363
-#: app/tools.py:1444 app/tools.py:1760 app/tools.py:1801 app/tools.py:1833
-#: app/tools.py:2085 app/tools.py:2104
+#: app/tools.py:1444 app/tools.py:1760 app/tools.py:1814 app/tools.py:1846
+#: app/tools.py:2098 app/tools.py:2117
 msgid "The tool could not complete the request."
 msgstr "The tool could not complete the request."
 
@@ -1318,48 +1318,55 @@ msgstr "There is no version {detail} of that document"
 msgid "The document could not be written"
 msgstr "The document could not be written"
 
-#: app/tools.py:1743 app/tools.py:1786 app/tools.py:1820
+#: app/tools.py:1743 app/tools.py:1799 app/tools.py:1833
 msgid "User not identified for documents"
 msgstr "User not identified for documents"
-
-#: app/tools.py:1767
-#, python-brace-format
-msgid ""
-"Saved as {name} ({size} KB) in your documents. SVG documents are not "
-"indexed."
-msgstr ""
-"Saved as {name} ({size} KB) in your documents. SVG documents are not "
-"indexed."
 
 #: app/tools.py:1772
 #, python-brace-format
 msgid ""
+"The name \"{requested}\" was already taken, so the file was saved as "
+"\"{name}\"."
+msgstr "The name \"{requested}\" was already taken, so the file was saved as \"{name}\"."
+
+#: app/tools.py:1780
+#, python-brace-format
+msgid ""
+"Saved as {name} ({size} KB) in your documents. SVG documents are not "
+"indexed."
+msgstr ""
+"Saved as {name} ({size} KB) in your documents. SVG documents are not "
+"indexed."
+
+#: app/tools.py:1785
+#, python-brace-format
+msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
 msgstr ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
 
-#: app/tools.py:1806
+#: app/tools.py:1819
 #, python-brace-format
 msgid "Updated {name} — version {version} ({size} KB)."
 msgstr "Updated {name} — version {version} ({size} KB)."
 
-#: app/tools.py:1838
+#: app/tools.py:1851
 #, python-brace-format
 msgid "Restored {name} — now version {version} ({size} KB)."
 msgstr "Restored {name} — now version {version} ({size} KB)."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1851
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1864
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Unknown skill: {name}"
 
-#: app/tools.py:2016
+#: app/tools.py:2029
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "The tool call was ignored: the last round of the loop has been reached."
 
-#: app/tools.py:2031
+#: app/tools.py:2044
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1367,11 +1374,11 @@ msgstr ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
 
-#: app/tools.py:2037
+#: app/tools.py:2050
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "The tool call was rejected: its arguments were not valid JSON."
 
-#: app/tools.py:2091
+#: app/tools.py:2104
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Unknown tool: {tool}"
@@ -2774,7 +2781,7 @@ msgstr ""
 #: app/templates/admin.html:236 app/templates/admin.html:663
 #: app/templates/admin.html:1103 app/templates/chat.html:9
 #: app/templates/chat.html:220 app/templates/chat.html:402
-#: app/templates/chat.html:522
+#: app/templates/chat.html:523
 msgid "Documents"
 msgstr "Documents"
 
@@ -3940,7 +3947,7 @@ msgid "Maximum accepted image width"
 msgstr "Maximum accepted image width"
 
 #: app/templates/admin.html:859 app/templates/chat.html:352
-#: app/templates/chat.html:520
+#: app/templates/chat.html:521
 msgid "Knowledge graph"
 msgstr "Knowledge graph"
 
@@ -5686,7 +5693,7 @@ msgstr "This browser cannot render the graph"
 msgid "Pick the second node of the path"
 msgstr "Pick the second node of the path"
 
-#: app/templates/chat.html:361 app/templates/chat.html:531
+#: app/templates/chat.html:361 app/templates/chat.html:532
 msgid "Clear path"
 msgstr "Clear path"
 
@@ -5698,7 +5705,7 @@ msgstr "No relations"
 msgid "Path highlight cleared"
 msgstr "Path highlight cleared"
 
-#: app/templates/chat.html:365 app/templates/chat.html:525
+#: app/templates/chat.html:365 app/templates/chat.html:526
 msgid "Path"
 msgstr "Path"
 
@@ -5837,7 +5844,7 @@ msgstr "3D is unavailable: {reason}"
 msgid "Switch between 2D and 3D"
 msgstr "Switch between 2D and 3D"
 
-#: app/templates/chat.html:399 app/templates/chat.html:523
+#: app/templates/chat.html:399 app/templates/chat.html:524
 msgid "Switch to 2D"
 msgstr "Switch to 2D"
 
@@ -5849,7 +5856,7 @@ msgstr "Switch to 3D"
 msgid "Entities"
 msgstr "Entities"
 
-#: app/templates/chat.html:403 app/templates/chat.html:522
+#: app/templates/chat.html:403 app/templates/chat.html:523
 msgid "Switch to documents"
 msgstr "Switch to documents"
 
@@ -6075,115 +6082,119 @@ msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
 #: app/templates/chat.html:469
-msgid "Writing the document..."
-msgstr "Writing the document..."
+msgid "📄 Writing the document..."
+msgstr "📄 Writing the document..."
 
 #: app/templates/chat.html:470
-msgid "Drawing the diagram..."
-msgstr "Drawing the diagram..."
+msgid "🎨 Drawing the diagram..."
+msgstr "🎨 Drawing the diagram..."
 
 #: app/templates/chat.html:471
-msgid "Editing the document..."
-msgstr "Editing the document..."
+msgid "✏️ Editing the document..."
+msgstr "✏️ Editing the document..."
 
 #: app/templates/chat.html:472
-msgid "Restoring the earlier version..."
-msgstr "Restoring the earlier version..."
+msgid "↩️ Restoring the earlier version..."
+msgstr "↩️ Restoring the earlier version..."
 
 #: app/templates/chat.html:473
+msgid "⚙️ Working..."
+msgstr "⚙️ Working..."
+
+#: app/templates/chat.html:474
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Deep analysis: reading documents"
 
-#: app/templates/chat.html:474
+#: app/templates/chat.html:475
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Deep analysis: phase %s"
 
-#: app/templates/chat.html:475
+#: app/templates/chat.html:476
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Deep analysis: searching the web"
 
-#: app/templates/chat.html:476
+#: app/templates/chat.html:477
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:477
+#: app/templates/chat.html:478
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Deep analysis: composing the answer"
 
-#: app/templates/chat.html:478
+#: app/templates/chat.html:479
 msgid "Starting web crawl..."
 msgstr "🕸️ Starting web crawl..."
 
-#: app/templates/chat.html:479
+#: app/templates/chat.html:480
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Crawling page %s..."
 
-#: app/templates/chat.html:480
+#: app/templates/chat.html:481
 msgid "Indexing crawled content..."
 msgstr "🕸️ Indexing crawled content..."
 
-#: app/templates/chat.html:481
+#: app/templates/chat.html:482
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Deep analysis (%s steps)"
 
-#: app/templates/chat.html:482
+#: app/templates/chat.html:483
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:483
+#: app/templates/chat.html:484
 msgid "Making the plan..."
 msgstr "Making the plan..."
 
-#: app/templates/chat.html:484
+#: app/templates/chat.html:485
 msgid "Extracting the visual continuity sheet..."
 msgstr "📐 Extracting the visual continuity sheet..."
 
-#: app/templates/chat.html:485
+#: app/templates/chat.html:486
 msgid "Could not build the visual continuity sheet — images continue without it."
 msgstr ""
 "⚠️ Could not build the visual continuity sheet — images continue without "
 "it."
 
-#: app/templates/chat.html:486
+#: app/templates/chat.html:487
 msgid "Creating index for document..."
 msgstr "Creating index for document..."
 
-#: app/templates/chat.html:487
+#: app/templates/chat.html:488
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:488
+#: app/templates/chat.html:489
 msgid "Step"
 msgstr "Step"
 
-#: app/templates/chat.html:489
+#: app/templates/chat.html:490
 msgid "minute_abbr"
 msgstr "m"
 
-#: app/templates/chat.html:490
+#: app/templates/chat.html:491
 msgid "second_abbr"
 msgstr "s"
 
-#: app/templates/chat.html:491
+#: app/templates/chat.html:492
 msgid "timer_zero"
 msgstr "0s"
 
-#: app/templates/chat.html:525
+#: app/templates/chat.html:526
 msgid "Show the path between two nodes"
 msgstr "Show the path between two nodes"
 
-#: app/templates/chat.html:526
+#: app/templates/chat.html:527
 msgid "Find a node"
 msgstr "Find a node"
 
-#: app/templates/chat.html:528
+#: app/templates/chat.html:529
 msgid "Show or hide relation types"
 msgstr "Show or hide relation types"
 
-#: app/templates/chat.html:528
+#: app/templates/chat.html:529
 msgid "Relations"
 msgstr "Relations"
 

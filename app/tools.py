@@ -1762,13 +1762,26 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
     with force_locale(lang):
         size_kb = max(1, round(written.size / 1024))
         fmt = str(kw.get("format") or "md").strip().lower().lstrip(".")
+        # The server renames instead of overwriting. Measured: the model then told the
+        # user the name it asked for, though the result named the real one — so the
+        # result now says why the name changed, not only what it became.
+        lead = ""
+        if written.requested_name and written.requested_name != written.filename:
+            lead = (
+                str(
+                    _('The name "{requested}" was already taken, so the file was saved as "{name}".').format(
+                        requested=written.requested_name, name=written.filename
+                    )
+                )
+                + " "
+            )
         if fmt == "svg":
-            return str(
+            return lead + str(
                 _("Saved as {name} ({size} KB) in your documents. SVG documents are not indexed.").format(
                     name=written.filename, size=size_kb
                 )
             )
-        return str(
+        return lead + str(
             _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
                 name=written.filename, size=size_kb
             )
@@ -1970,10 +1983,42 @@ def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[
     try:
         parsed = json.loads(raw)
     except ValueError:
-        return {}, False
+        # A model writing a long SVG in the arguments emits raw newlines inside the
+        # JSON string, which strict JSON refuses: measured, a 19 KB drawing was
+        # rejected here and then poisoned the next request with the same parse
+        # error. Control characters are the one deviation worth accepting — the
+        # tool receives the text the model meant to write.
+        try:
+            parsed = json.loads(raw, strict=False)
+        except ValueError:
+            return {}, False
     if not isinstance(parsed, dict):
         return {}, False
     return repair_tool_arguments(parsed, schema), True
+
+
+def transcript_safe_calls(tool_calls: list[dict[str, Any]], schemas: dict[str, Any]) -> list[dict[str, Any]]:
+    """The calls as they may enter the transcript: arguments that parse, or ``{}``.
+
+    llama-server re-parses every tool call in the message history, so one malformed
+    argument string makes the whole conversation fail with the same parse error on
+    every later round — and the retry without tools cannot help, because the poison
+    is in the messages. The call is kept so the model sees that it was rejected, but
+    a call that does not parse goes in with empty arguments, which are valid JSON.
+    """
+    safe: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        function = tc.get("function", {})
+        _arguments, usable = parse_tool_arguments(
+            function.get("arguments", "{}"), schemas.get(function.get("name", ""))
+        )
+        if usable:
+            safe.append(tc)
+            continue
+        copied = json.loads(json.dumps(tc))
+        copied.setdefault("function", {})["arguments"] = "{}"
+        safe.append(copied)
+    return safe
 
 
 # Identical calls a model may make before the guard stops it. FLAI's own stream

@@ -35,6 +35,16 @@
 
 ### Added
 
+- **The assistant can draw SVG.** `write_document` gained an `svg` format: a diagram,
+  chart or icon is stored as a document of the user, previewed as an image and never
+  indexed — a drawing's markup is not a text corpus. The writer validates the document
+  before storing it (scripts, `on*` handlers, external `href`/`url()`, `foreignObject`,
+  a doctype and SMIL animation are refused; only local `#id` references pass), the
+  preview carries a sandbox CSP, and the card has no index switch. An SVG is edited
+  rather than appended. The bundled `svg-graphics` skill teaches layouts, charts, icons
+  and CSS-only animation. Tests: `tests/test_svg_safety.py`,
+  `tests/test_write_document_svg.py`.
+
 - **Two built-in skills: network diagnostics and documents.** `net-diagnostics` carries the
   order of checks (DNS first, then ping, trace, ports, HTTP, whois, and speed only when asked),
   what counts as proof and what does not, the one-host-per-call rule, and the refusal path.

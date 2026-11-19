@@ -1198,11 +1198,11 @@ msgstr "There is nothing to write: the content is empty"
 #: app/tools.py:1693
 #, python-brace-format
 msgid ""
-"Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
-" or pdf"
+"Unsupported document format: {detail}. Use md, csv, json, txt, svg, docx,"
+" xlsx or pdf"
 msgstr ""
-"Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
-" or pdf"
+"Unsupported document format: {detail}. Use md, csv, json, txt, svg, docx,"
+" xlsx or pdf"
 
 #: app/tools.py:1694
 #, python-brace-format
@@ -1233,6 +1233,20 @@ msgstr "A table needs rows: a list of rows, each a list of cells"
 #: app/tools.py:1702
 msgid "Only text documents can grow: write a new file instead of appending"
 msgstr "Only text documents can grow: write a new file instead of appending"
+
+#: app/tools.py:1702
+msgid "An SVG cannot be appended to: write a new file or edit the existing one"
+msgstr "An SVG cannot be appended to: write a new file or edit the existing one"
+
+#: app/tools.py:1702
+#, python-brace-format
+msgid "The SVG is not well-formed XML: {detail}"
+msgstr "The SVG is not well-formed XML: {detail}"
+
+#: app/tools.py:1702
+#, python-brace-format
+msgid "The SVG contains something unsafe: {detail}"
+msgstr "The SVG contains something unsafe: {detail}"
 
 #: app/tools.py:1703
 #, python-brace-format
@@ -1314,6 +1328,15 @@ msgid ""
 msgstr ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
+
+#: app/tools.py:1760
+#, python-brace-format
+msgid ""
+"Saved as {name} ({size} KB) in your documents. SVG documents are not "
+"indexed."
+msgstr ""
+"Saved as {name} ({size} KB) in your documents. SVG documents are not "
+"indexed."
 
 #: app/tools.py:1794
 #, python-brace-format
@@ -2067,6 +2090,10 @@ msgstr "Not authenticated"
 #: app/routes/documents.py:806
 msgid "Only a document written by the assistant has this switch"
 msgstr "Only a document written by the assistant has this switch"
+
+#: app/routes/documents.py:806
+msgid "SVG documents are not indexed"
+msgstr "SVG documents are not indexed"
 
 #: app/routes/documents.py:858
 msgid "The assistant already wrote a document with this name"

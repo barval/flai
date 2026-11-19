@@ -515,7 +515,8 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
             "name without a path; the extension follows the format. For a table use format csv "
             "or xlsx with rows (a list of rows, each a list of cells), never a hand-built string. "
             "Use docx for a document someone will edit in Word, pdf for one that must look the "
-            "same everywhere; headings are written as '# ', '## ', '### ' and bullets as '- '."
+            "same everywhere; headings are written as '# ', '## ', '### ' and bullets as '- '. "
+            "Use svg for vector graphics — diagrams, charts, icons — with the SVG markup as content."
         ),
         "parameters": {
             "type": "object",
@@ -524,11 +525,12 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
                 "content": {"type": "string", "description": "The whole text of the document"},
                 "format": {
                     "type": "string",
-                    "enum": ["md", "csv", "json", "txt", "docx", "xlsx", "pdf"],
+                    "enum": ["md", "csv", "json", "txt", "svg", "docx", "xlsx", "pdf"],
                     "description": (
-                        "md for prose, csv with rows, json (must parse), txt plain, docx a Word "
-                        "document (text with headings and bullets), xlsx a spreadsheet (rows or "
-                        "sheets), pdf a fixed-layout document"
+                        "md for prose, csv with rows, json (must parse), txt plain, svg vector "
+                        "graphics (diagrams, charts, icons), docx a Word document (text with "
+                        "headings and bullets), xlsx a spreadsheet (rows or sheets), pdf a "
+                        "fixed-layout document"
                     ),
                 },
                 "rows": {
@@ -1690,7 +1692,7 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
     with force_locale(lang):
         messages = {
             "empty": _("There is nothing to write: the content is empty"),
-            "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx or pdf"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, svg, docx, xlsx or pdf"),
             "too_large": _("The document is too large (limit {limit} KB)").format(
                 limit=documents_write.MAX_CONTENT_BYTES // 1024
             ),
@@ -1700,6 +1702,9 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
             "name": _("The document name is not usable: {detail}"),
             "csv_rows": _("A table needs rows: a list of rows, each a list of cells"),
             "append_binary": _("Only text documents can grow: write a new file instead of appending"),
+            "append_svg": _("An SVG cannot be appended to: write a new file or edit the existing one"),
+            "svg_invalid": _("The SVG is not well-formed XML: {detail}"),
+            "svg_unsafe": _("The SVG contains something unsafe: {detail}"),
             "too_large_binary": _("The document is too large to render ({detail} bytes)"),
             "pdf_font": _("The PDF renderer has no font with Cyrillic on this installation"),
             "too_many_sheets": _("Too many sheets in one workbook (max {detail})"),
@@ -1756,6 +1761,13 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
 
     with force_locale(lang):
         size_kb = max(1, round(written.size / 1024))
+        fmt = str(kw.get("format") or "md").strip().lower().lstrip(".")
+        if fmt == "svg":
+            return str(
+                _("Saved as {name} ({size} KB) in your documents. SVG documents are not indexed.").format(
+                    name=written.filename, size=size_kb
+                )
+            )
         return str(
             _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
                 name=written.filename, size=size_kb

@@ -344,9 +344,9 @@ Qwen3.6/Qwen3.8, gemma-4 и сборку Qwen3-VL, в chat-шаблоне кот
 | Профиль | RAM | VRAM | Примечания |
 |---|---|---|---|
 | **Ядро** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, простаивающий llama-swap) | ~2,5 ГБ | — | одновременно резидентна одна модель llama.cpp |
-| **Piper TTS** (`with-voice-piper`) | **~0,5 ГБ** | — | измерено со всеми четырьмя голосами |
+| **Piper TTS** (`with-voice-piper`) | **~0,5 ГБ** | — | измерено со всеми четырьмя голосами; `with-voice` запускает ASR и TTS вместе, `with-tts-piper` — только TTS-бэкенд |
 | **Kokoro TTS** (`with-tts-kokoro`) | **1,6 ГБ в покое / ~4,5 ГБ прогретый** | — | только TTS-бэкенд; `with-voice-kokoro` добавляет контейнер ASR. +3,1 ГБ — это RU-воркер G2P, освобождается через `KOKORO_G2P_IDLE_TIMEOUT` (300 с) |
-| **Whisper ASR** (`with-voice-*`) | ~2 ГБ | — | `large-v3-turbo`, CPU; планировщик резервирует `WHISPER_RAM_MB` |
+| **Whisper ASR** (`with-voice-*`) | ~2 ГБ | — | `large-v3-turbo`, CPU; `with-whisper-cpu` / `with-whisper-gpu` запускают только ASR; планировщик резервирует `WHISPER_RAM_MB` |
 | **Генерация изображений** (`with-image-gen`) | ~1,5 ГБ | до ~10 ГБ | sd.cpp, Z-Image Turbo Q8; SD и видео никогда не пересекаются |
 | **LTX-Video** (`with-video`) | ~1 ГБ резидентно | **пик 3,1 ГБ** | измеренный пик конвейера, а не прежняя константа 8 ГБ |
 | **Wan видео** (`with-video-wan`) | ~1 ГБ (GPU) / **~10 ГБ** при выгруженном энкодере | **15,0 ГБ** на 832×480×121; **9,0 ГБ** с `--offload-to-cpu` | измерено 209 с на 5-секундный клип на карте 16 ГБ; **рекомендуется от 24 ГБ VRAM** |
@@ -443,9 +443,9 @@ cd flai
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
-# + долговременная память, + веб-поиск, + краулер сайтов
+# + долговременная память, + веб-поиск, + краулер сайтов, + сетевая диагностика
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag \
-  --with-video --with-slm --with-search --with-crawler
+  --with-video --with-slm --with-search --with-crawler --with-net-tools
 
 # Прогнать набор тестов после развёртывания
 ./deploy-ru.sh --download-models --with-image-gen --run-tests
@@ -494,9 +494,14 @@ docker compose -f docker-compose.gpu.yml up -d
 # Добавить подсистемы
 docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
-  --profile with-video --profile with-slm --profile with-search --profile with-crawler up -d
+  --profile with-video --profile with-slm --profile with-search --profile with-crawler \
+  --profile with-net-tools up -d
 
-# Хосты без GPU используют другой файл compose
+# Только сетевая диагностика: сайдкар входит в сеть, общую лишь с веб-приложением,
+# а флаг --with-net-tools у скрипта развёртывания ещё и генерирует его токен.
+docker compose -f docker-compose.gpu.yml --profile with-net-tools up -d
+
+# Хосты без GPU используют другой файл compose (профиль есть и там)
 docker compose -f docker-compose.cpu.yml up -d
 ```
 

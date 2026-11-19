@@ -340,9 +340,9 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 | Profile | RAM | VRAM | Notes |
 |---|---|---|---|
 | **Core** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time |
-| **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded |
+| **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded; `with-voice` starts ASR and TTS together, `with-tts-piper` the TTS backend alone |
 | **Kokoro TTS** (`with-tts-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | the TTS backend alone; `with-voice-kokoro` adds the ASR container. +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
-| **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; the planner budgets `WHISPER_RAM_MB` |
+| **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; `with-whisper-cpu` / `with-whisper-gpu` start ASR alone; the planner budgets `WHISPER_RAM_MB` |
 | **Image generation** (`with-image-gen`) | ~1.5 GB | up to ~10 GB | sd.cpp, Z-Image Turbo Q8; SD and video never overlap |
 | **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |
 | **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card; **recommended from 24 GB VRAM** |
@@ -438,9 +438,9 @@ cd flai
 #   Wan: slower, 5 s, better motion (GPU only)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
-# + long-term memory, + web search, + site crawler
+# + long-term memory, + web search, + site crawler, + network diagnostics
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \
-  --with-video --with-slm --with-search --with-crawler
+  --with-video --with-slm --with-search --with-crawler --with-net-tools
 
 # Run the test suite after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -489,9 +489,14 @@ docker compose -f docker-compose.gpu.yml up -d
 # Add subsystems
 docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
-  --profile with-video --profile with-slm --profile with-search --profile with-crawler up -d
+  --profile with-video --profile with-slm --profile with-search --profile with-crawler \
+  --profile with-net-tools up -d
 
-# CPU-only hosts use the other compose file
+# Network diagnostics on its own: the sidecar joins a network shared only with the
+# web app, and `--with-net-tools` in the deploy script also generates its token.
+docker compose -f docker-compose.gpu.yml --profile with-net-tools up -d
+
+# CPU-only hosts use the other compose file (the profile exists there too)
 docker compose -f docker-compose.cpu.yml up -d
 ```
 

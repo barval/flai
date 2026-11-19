@@ -32,6 +32,7 @@ CLEAN_GATES = (
     "check_compose_profiles.py",
     "check_env_parity.py",
     "check_behaviour_claims.py",
+    "check_deploy_keys.py",
 )
 
 
@@ -117,3 +118,35 @@ def test_behaviour_claims_reports_a_contradiction(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "write-document-no-auto-index" in result.stdout
     assert "CONTRADICTED" in result.stdout
+
+
+@pytest.mark.unit
+def test_deploy_keys_reports_an_undocumented_flag(tmp_path: Path) -> None:
+    """The checker has teeth: a parsed key that the usage text omits is a finding."""
+    script = SCRIPTS / "check_deploy_keys.py"
+    layout = tmp_path / ".opencode" / "skills" / "preparing-flai-release" / "scripts"
+    layout.mkdir(parents=True)
+    (layout / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+
+    body = """#!/usr/bin/env bash
+for arg in "$@"; do
+    case "$arg" in
+        --with-rag) RAG=true ;;
+        --with-hidden) HIDDEN=true ;;
+    esac
+done
+cat <<'USAGE'
+  --with-rag    Deploy RAG
+USAGE
+"""
+    (tmp_path / "deploy.sh").write_text(body, encoding="utf-8")
+    (tmp_path / "deploy-ru.sh").write_text(body, encoding="utf-8")
+    (tmp_path / ".opencode" / "skills" / "deploying-flai").mkdir(parents=True)
+    (tmp_path / ".opencode" / "skills" / "deploying-flai" / "SKILL.md").write_text(
+        "Run `--with-rag` or `--with-hidden`.\n", encoding="utf-8"
+    )
+
+    result = _run(str(layout / script.name))
+    assert result.returncode == 1
+    assert "--with-hidden" in result.stdout
+    assert "MISSING_IN_USAGE" in result.stdout

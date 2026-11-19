@@ -984,6 +984,8 @@ Options:
                       (mutually exclusive with --with-video; needs a GPU)
   --with-net-tools    Deploy the network diagnostics sidecar (dig, whois, ping,
                       mtr, nmap, iperf3); tools are then granted per user in the panel
+  --with-search       Deploy SearXNG for web search (default: disabled)
+  --with-crawler      Deploy Crawl4AI for deep site reading (default: disabled)
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)

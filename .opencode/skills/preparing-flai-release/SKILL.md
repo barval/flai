@@ -31,6 +31,7 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_behaviour_claims.py --list
+python3 .opencode/skills/preparing-flai-release/scripts/check_deploy_keys.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
@@ -48,6 +49,13 @@ reads prose. Measured: the architecture summary still described
 `check_doc_claims.py` resolves three kinds of claim mechanically: a `flask <command>`
 that no longer exists, an environment key named in backticks that nothing outside
 the documentation mentions, and a `with-…` compose profile no compose file defines.
+
+`check_deploy_keys.py` compares the three inventories of a deployment key: what
+`deploy.sh`/`deploy-ru.sh` parse, what their usage text describes, and what
+`.opencode/skills/deploying-flai/SKILL.md` tells an agent to run. Measured: `--with-search`
+and `--with-crawler` were implemented and absent from both usage texts, `--with-net-tools`
+was missing from the Russian usage and from the agent skill, and the Russian block had lost
+its indentation. A key one language implements and the other does not is a finding too.
 
 `check_behaviour_claims.py` checks the sentence a document makes about **what the code
 does** — "the tool queues indexing", "an upload is indexed on arrival", "a restart cancels
@@ -681,6 +689,7 @@ Check and record evidence:
 | Documented paths exist | `check_dead_paths.py` | PASS / FAIL |
 | Documented commands, keys, profiles resolve | `check_doc_claims.py` | PASS / FAIL |
 | Documented behaviour matches the call | `check_behaviour_claims.py` (+ `--list` read by hand) | PASS / FAIL |
+| Deployment keys agree across scripts, usage and the agent skill | `check_deploy_keys.py` | PASS / FAIL |
 | Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
 | Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
 | Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |
@@ -744,5 +753,6 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "The gate runs five test files, so the changed code is covered." | That list was written when the project was smaller. Two tests were red for a whole release because no gate ran them. `list_release_tests.py` names the set from the diff. |
 | "It compiles locally, so the image will start." | The image is `python:3.11-slim` and the venv is newer. Compile with `python3.11`. |
 | "The profile is in the compose file, so it is documented." | The reverse check had no guard: `with-tts-kokoro` started a container and appeared in no document. Run `check_compose_profiles.py`. |
+| "The flag works, so it is documented." | A key is parsed in `deploy.sh`, described in the usage text and named in the deployment skill — three places that drift. `--with-search` worked and appeared in neither usage text. Run `check_deploy_keys.py`. |
 | "A skill is prose; it cannot rot." | A skill is instructions an agent obeys. A renamed flag in `SKILL.md` makes the agent run a command that does not exist. Run `check_skill_claims.py`. |
 | "The version strings were grepped, so they agree." | A dozen places, one grep chain, no assertions. `check_version_markers.py --released` reads all of them — the same script the opening skill used. |

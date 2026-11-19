@@ -81,9 +81,29 @@ git checkout <release branch or tag>       # never a feature branch for a deploy
 ./deploy.sh --download-models [flags] --help first
 ```
 
-Flags map to profiles one-to-one (`--with-image-gen`, `--with-rag`, `--with-slm`,
-`--with-search`, `--with-crawler`, `--with-voice-piper|--with-voice-kokoro`,
-`--with-video|--with-video-wan`, `--cpu`, `--gpu-nvidia|--gpu-amd|--gpu-intel`).
+The full key set, and every one of them is a documented flag of the script:
+
+| Keys | What they start |
+|---|---|
+| `--with-image-gen` | stable-diffusion.cpp (image generation and editing) |
+| `--with-rag` | Qdrant (document search) |
+| `--with-slm` | SuperLocalMemory (long-term memory) |
+| `--with-search` | SearXNG (web search) |
+| `--with-crawler` | Crawl4AI (deep site reading) |
+| `--with-net-tools` | the network diagnostics sidecar (dig, whois, ping, mtr, nmap, iperf3); its token is generated and access is granted per user in the panel |
+| `--with-voice` / `--with-voice-piper` | Whisper ASR + Piper TTS (the two spellings are the same choice) |
+| `--with-voice-kokoro` | Whisper ASR + Kokoro TTS |
+| `--with-video` | LTX-Video (fast, clips up to 10 s) |
+| `--with-video-wan` | Wan 2.2 (quality, 5 s, GPU only) |
+| `--cpu` | CPU-only mode |
+| `--gpu-nvidia` / `--gpu-amd` / `--gpu-intel` | the platform (AMD and Intel are experimental) |
+| `--platform=NAME` | the same as one option: `auto|nvidia|amd|intel|cpu` |
+| `--download-models` | download the model files for the chosen profiles |
+| `--run-tests` | run the test suite after deployment |
+| `--two-models` | keep the multimodal + reasoning pair instead of one universal model |
+| `--strict-stack` | switch off the services the flags do not name (without it an existing `.env` is additive) |
+| `--help` | the authoritative list, always read it first |
+
 `--with-video` and `--with-video-wan` are mutually exclusive; the voice backends
 are too.
 

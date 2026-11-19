@@ -9,8 +9,10 @@ a person reading the documentation cannot know the profile exists.
 
 This script reports:
 
-* **undocumented** — a profile a compose file defines that no user-facing
-  document mentions;
+* **undocumented** — a profile a compose file defines that the READMEs and
+  `AGENTS.md` do not mention. A mention buried in `docs/` does not count: the
+  README is where a person chooses a stack, and `--with-net-tools` was missing
+  there for a whole release while `docs/NET_TOOLS.md` described it;
 * **missing** — a profile a document mentions that no compose file defines
   (the same finding as ``check_doc_claims.py``, kept here so one command answers
   both halves).
@@ -56,7 +58,6 @@ def _defined(root: Path) -> dict[str, str]:
 def _documented(root: Path) -> dict[str, str]:
     found: dict[str, str] = {}
     pages = [root / name for name in DOCUMENTS]
-    pages += sorted((root / "docs").glob("*.md"))
     for page in pages:
         if not page.exists():
             continue

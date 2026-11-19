@@ -35,6 +35,14 @@
 
 ### Added
 
+- **A document request says what it is doing.** The chat status stopped at "Thinking…" while the
+  model composed a `write_document` call: in the measured case an SVG cost 25 s of argument
+  generation, and the tool itself then ran for 0.6 s, so a stage announced at execution time would
+  have covered nothing. The stream now reports the tool as soon as its **name** arrives in the
+  first delta — "Writing the document…" — and switches to "Drawing the diagram…" once the format
+  is known; `edit_document` and `restore_document_version` announce themselves the same way.
+  Tests: `tests/test_tool_stages.py`.
+
 - **Skill selection is measured, and it depends on the model.** The evaluation harness now scores
   skills — `EvalCase.expected_skills`, `skill_exact`, `false_skills` and `missed_skills` — and the
   seed set grew to 47 cases with five positive cases and five traps. Measured with

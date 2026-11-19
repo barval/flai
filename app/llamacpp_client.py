@@ -649,6 +649,7 @@ class AbstractLlamaBackend:
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
@@ -792,6 +793,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -865,6 +867,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             _stream_usage: dict[str, Any] | None = None
             # Accumulate tool calls from streaming chunks
             _tool_calls_by_index: dict[int, dict[str, Any]] = {}
+            _tool_call_notified: set[int] = set()
 
             for line in response.iter_lines():
                 if not line:
@@ -931,6 +934,13 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                                     tc["function"]["arguments"] += func_delta["arguments"]
                                 if tc_delta.get("id"):
                                     tc["id"] = tc_delta["id"]
+                            name_so_far = _tool_calls_by_index[idx]["function"]["name"]
+                            if name_so_far and idx not in _tool_call_notified and tool_call_started is not None:
+                                _tool_call_notified.add(idx)
+                                try:
+                                    tool_call_started(name_so_far)
+                                except Exception:  # noqa: BLE001 - a progress reporter must not break the stream
+                                    self.logger.warning("tool_call_started callback failed", exc_info=True)
                 except json.JSONDecodeError:
                     continue
             if _stream_usage:
@@ -1254,6 +1264,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1390,6 +1401,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     _reasoning_chars = 0
                     # Accumulate tool calls from streaming chunks
                     _tool_calls_by_index: dict[int, dict[str, Any]] = {}
+                    _tool_call_notified: set[int] = set()
 
                     for line in response.iter_lines():
                         if not line:
@@ -1462,6 +1474,19 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                             tc["function"]["arguments"] += func_delta["arguments"]
                                         if tc_delta.get("id"):
                                             tc["id"] = tc_delta["id"]
+                                    name_so_far = _tool_calls_by_index[idx]["function"]["name"]
+                                    if (
+                                        name_so_far
+                                        and idx not in _tool_call_notified
+                                        and tool_call_started is not None
+                                    ):
+                                        _tool_call_notified.add(idx)
+                                        try:
+                                            tool_call_started(name_so_far)
+                                        except Exception:  # noqa: BLE001 - a reporter must not break the stream
+                                            self.logger.warning(
+                                                "tool_call_started callback failed", exc_info=True
+                                            )
                         except json.JSONDecodeError:
                             continue
                     if _stream_usage:
@@ -1796,6 +1821,7 @@ class LlamaCppClient:
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1829,6 +1855,7 @@ class LlamaCppClient:
             temperature=temperature,
             status_callback=status_callback,
             tool_choice=tool_choice,
+            tool_call_started=tool_call_started,
         )
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:

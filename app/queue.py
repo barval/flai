@@ -160,6 +160,33 @@ def _run_document_indexing(
     return True, message, embedding_model, False
 
 
+TOOL_STAGES: dict[str, str] = {
+    "get_current_time": "getting_time",
+    "calculator": "calculating",
+    "time_calc": "calculating_date",
+    "web_search": "searching_web",
+    "rag_search": "searching_documents",
+    "history_search": "searching_history",
+    "camera_snapshot": "capturing_snapshot",
+    "write_document": "writing_document",
+    "edit_document": "editing_document",
+    "restore_document_version": "restoring_document",
+}
+
+
+def tool_stage(tool_name: str, arguments: dict[str, Any] | None = None) -> str | None:
+    """The progress stage for one tool, or None when it needs no announcement.
+
+    A drawing is announced as a drawing: the format is an argument, so the label
+    can say what the model is composing rather than the generic "writing a
+    document". The call arrives before its arguments do, which is why `arguments`
+    is optional — the stage is announced when the name appears in the stream.
+    """
+    if tool_name == "write_document" and (arguments or {}).get("format") == "svg":
+        return "drawing_svg"
+    return TOOL_STAGES.get(tool_name)
+
+
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -5613,15 +5640,7 @@ class RedisRequestQueue:
             session.report_tool_call(tool_name, arguments)
             self.logger.info(f"{log_label}: {tool_name}({arguments})")
 
-            stage = {
-                "get_current_time": "getting_time",
-                "calculator": "calculating",
-                "time_calc": "calculating_date",
-                "web_search": "searching_web",
-                "rag_search": "searching_documents",
-                "history_search": "searching_history",
-                "camera_snapshot": "capturing_snapshot",
-            }.get(tool_name)
+            stage = tool_stage(tool_name, arguments)
             if stage:
                 session.report_stage(stage)
 
@@ -5757,6 +5776,15 @@ class RedisRequestQueue:
         # hands the caller one kind of turn either way.
         current_label = {"value": "Tool call"}
 
+        def on_tool_call_started(tool_name: str) -> None:
+            # The model spends most of a document request composing the call
+            # itself: the SVG in the previous round took 25 s before the tool
+            # ran for 0.6 s. The name arrives in the first delta, so the stage
+            # is announced there rather than after the work is done.
+            stage = tool_stage(tool_name)
+            if stage:
+                session.report_stage(stage)
+
         def generate(round_tool_choice: str | None) -> Turn:
             if not stream:
                 response = llamacpp.chat(
@@ -5789,6 +5817,7 @@ class RedisRequestQueue:
                 lang=lang,
                 tools=tools,
                 tool_choice=round_tool_choice,
+                tool_call_started=on_tool_call_started,
             ):
                 if isinstance(chunk, dict):
                     if chunk.get("type") == "tool_calls":

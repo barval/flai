@@ -417,8 +417,10 @@ class TestDocChatTask:
         )
         import app.queue as qmod
 
-        def fake_save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
+        def fake_save_document(user_id, doc_id, filename, file_size, file_ext, file_path, **kwargs):
+            # v13.5 passes `source`; the fake accepts whatever the writer adds next.
             captured["doc"] = (user_id, doc_id, filename)
+            captured["source"] = kwargs.get("source")
 
         def fake_update_status(doc_id, status, **k):
             captured.setdefault("status", []).append((doc_id, status))

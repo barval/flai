@@ -183,7 +183,11 @@ def test_users_tab_orders_the_request_column_before_tavily():
     from pathlib import Path
 
     html = Path("app/templates/admin.html").read_text(encoding="utf-8")
-    assert html.index("web_requests_month") < html.index("{{ _('Tavily API') }}")
+    # The header is split into two lines by a `{% set %}`, so the literal tag is not in
+    # the template: the variable it feeds is what the column order is measured against.
+    # The Tavily header is split by a `{% set %}` above the table; the column that uses
+    # it is what the order is measured against.
+    assert html.index("web_requests_month") < html.index("<th>{{ tavily_header")
 
     js = Path("app/static/js/admin.js").read_text(encoding="utf-8")
     assert js.index("webRequestsCell") < js.index("const tavilyCell = document")

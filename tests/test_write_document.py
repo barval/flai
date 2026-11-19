@@ -87,7 +87,7 @@ def test_invalid_json_is_refused_and_leaves_nothing(writer_env):
 
 def test_an_unknown_format_is_refused(writer_env):
     with pytest.raises(DocumentWriteError) as error:
-        write_document_file(LOGIN, "x", "y", fmt="pdf")
+        write_document_file(LOGIN, "x", "y", fmt="exe")
 
     assert error.value.code == "format"
 

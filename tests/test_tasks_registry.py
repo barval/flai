@@ -21,6 +21,9 @@ def test_registry_contains_core_tools():
         "image_edit",
         "video_gen",
         "continuity",
+        # v13.5: a task can run a chat tool and write a document.
+        "chat_tool",
+        "document",
     } == caps
 
 
@@ -59,5 +62,7 @@ def test_get_capabilities_returns_defensive_copies():
         "image_edit",
         "video_gen",
         "continuity",
+        "chat_tool",
+        "document",
     }
     assert fresh[0]["label"] != "x"

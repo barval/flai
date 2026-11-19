@@ -32,6 +32,7 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_behaviour_claims.py --list
 python3 .opencode/skills/preparing-flai-release/scripts/check_deploy_keys.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_mypy_ratchet.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
@@ -56,6 +57,11 @@ the documentation mentions, and a `with-…` compose profile no compose file def
 and `--with-crawler` were implemented and absent from both usage texts, `--with-net-tools`
 was missing from the Russian usage and from the agent skill, and the Russian block had lost
 its indentation. A key one language implements and the other does not is a finding too.
+
+`check_mypy_ratchet.py` reads the `ignore_errors` list from `pyproject.toml`, checks those
+modules again with the silence lifted, and fails when an entry reports nothing — a fixed
+module whose line stays is how a ratchet stops ratcheting. `mypy app/ modules/` itself now
+blocks CI; the list is the backlog found the day it started, 38 modules and 198 errors.
 
 `check_behaviour_claims.py` checks the sentence a document makes about **what the code
 does** — "the tool queues indexing", "an upload is indexed on arrival", "a restart cancels
@@ -690,6 +696,7 @@ Check and record evidence:
 | Documented commands, keys, profiles resolve | `check_doc_claims.py` | PASS / FAIL |
 | Documented behaviour matches the call | `check_behaviour_claims.py` (+ `--list` read by hand) | PASS / FAIL |
 | Deployment keys agree across scripts, usage and the agent skill | `check_deploy_keys.py` | PASS / FAIL |
+| The type check runs and only shrinks | `check_mypy_ratchet.py` | PASS / FAIL |
 | Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
 | Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
 | Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |

@@ -177,7 +177,7 @@ def delete_task(task_id: str) -> None:
         c.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
 
 
-def update_task(task_id: str, **fields: Any) -> dict:
+def update_task(task_id: str, **fields: Any) -> dict | None:
     """Update allowed task columns; return the fresh row (None when task is absent)."""
     sets, vals = _build_update("tasks", _TASK_FIELDS, fields)
     with get_db() as conn:
@@ -218,7 +218,7 @@ def get_step(step_id: str) -> dict | None:
         return dict(row) if row else None
 
 
-def update_step(step_id: str, **fields: Any) -> dict:
+def update_step(step_id: str, **fields: Any) -> dict | None:
     """Update allowed task_steps columns; return the fresh row (None when absent).
 
     ``started_at``/``finished_at`` accept datetime objects or ISO strings

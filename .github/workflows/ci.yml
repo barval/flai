@@ -39,7 +39,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run mypy
-        run: mypy app/ modules/ || true
+        run: mypy app/ modules/
+      - name: Check the mypy ratchet
+        run: python .opencode/skills/preparing-flai-release/scripts/check_mypy_ratchet.py
+      - name: Check the code parses on the runtime version
+        run: python -m compileall -q app modules
 
   test:
     name: Tests (pytest)

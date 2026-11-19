@@ -23,7 +23,7 @@
 
 ```bash
 ruff check .
-mypy app/ modules/               # CI runs with `|| true` — does not block
+mypy app/ modules/               # блокирует CI; заглушённый бэклог — в pyproject.toml
 ```
 
 ## Зависимости и lock-файл

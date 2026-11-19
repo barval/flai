@@ -150,3 +150,22 @@ USAGE
     assert result.returncode == 1
     assert "--with-hidden" in result.stdout
     assert "MISSING_IN_USAGE" in result.stdout
+
+
+@pytest.mark.unit
+def test_mypy_ratchet_reports_an_entry_with_no_file(tmp_path: Path) -> None:
+    """A typo in the silence list suppresses nothing, so it must be a finding."""
+    script = SCRIPTS / "check_mypy_ratchet.py"
+    layout = tmp_path / ".opencode" / "skills" / "preparing-flai-release" / "scripts"
+    layout.mkdir(parents=True)
+    (layout / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.mypy]\npython_version = 3.12\n\n"
+        "[[tool.mypy.overrides]]\nmodule = [\"app.gone\"]\nignore_errors = true\n",
+        encoding="utf-8",
+    )
+
+    result = _run(str(layout / script.name))
+
+    assert result.returncode == 1
+    assert "app.gone" in result.stdout

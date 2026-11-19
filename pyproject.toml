@@ -112,13 +112,63 @@ ignore = [
 known-first-party = ["app", "modules"]
 
 [tool.mypy]
-python_version = "3.11"
+# The image runs Python 3.11, but numpy 2.5 ships stubs written with PEP 695 syntax
+# (`type X = ...`), which mypy can only parse with a 3.12 target. CI runs
+# `python -m compileall` on 3.11 as the guard that the code still runs where it ships.
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 ignore_missing_imports = true
 exclude = ["tests/", "venv/", "translations/"]
+
+# The check runs and blocks CI, but the backlog is real: these modules still carry the errors
+# it found the day it was switched on. Removing a line is how a module gets fixed — the
+# release gate (check_mypy_ratchet.py) rejects an entry that no longer reports anything, so
+# this list can only shrink.
+[[tool.mypy.overrides]]
+module = [
+    "app.api_bridge",
+    "app.cli",
+    "app.crawler_guard",
+    "app.database",
+    "app.documents_write",
+    "app.graph_extract",
+    "app.graph_rag",
+    "app.lemmatizer",
+    "app.llama_swap_config",
+    "app.mcp_registry",
+    "app.model_hub",
+    "app.monitoring.archive",
+    "app.monitoring.queries",
+    "app.monitoring.snapshots",
+    "app.monitoring.system",
+    "app.queue",
+    "app.rag_eval",
+    "app.resource_manager",
+    "app.routes.admin",
+    "app.routes.messages",
+    "app.routes.scheduler",
+    "app.routes.tasks",
+    "app.scheduler",
+    "app.scheduler_tools",
+    "app.settings_store",
+    "app.tasks.answer_images",
+    "app.tasks.events",
+    "app.tasks.executor",
+    "app.tasks.runner",
+    "app.tavily_keys",
+    "app.tools",
+    "app.universal_mode",
+    "app.utils",
+    "modules.history",
+    "modules.rag",
+    "modules.sd_cpp",
+    "modules.search",
+    "modules.video",
+]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

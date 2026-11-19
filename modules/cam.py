@@ -23,7 +23,10 @@ class CamModule(TranslationMixin):
 
     def __init__(self, app=None) -> None:
         self.logger = logging.getLogger(__name__)
-        self.camera_api_url = None
+        # Empty until init_app() reads CAMERA_API_URL. A module built without an app is
+        # expected: the availability check must then answer "no camera" instead of raising
+        # on None.rstrip('/').
+        self.camera_api_url: str = ""
         self.available = False
         self.last_check = 0
         self.check_interval = 30
@@ -40,7 +43,9 @@ class CamModule(TranslationMixin):
 
     def init_app(self, app):
         self.app = app
-        self.camera_api_url = app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
+        self.camera_api_url = str(
+            app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
+        )
         self.timeout = app.config.get("CAMERA_API_TIMEOUT", 15)
         self.check_interval = app.config.get("CAMERA_CHECK_INTERVAL", 30)
         self.api_key = app.config.get("CAMERA_API_KEY", "")
@@ -468,7 +473,11 @@ class CamModule(TranslationMixin):
                                                 break
                                         else:
                                             continue
-                                    file_type = data.get("content_type", data.get("mime_type", "image/jpeg"))
+                                    file_type = str(
+                                        data.get("content_type")
+                                        or data.get("mime_type")
+                                        or "image/jpeg"
+                                    )
                                 else:
                                     continue
                             except Exception:

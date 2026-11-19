@@ -9,7 +9,11 @@
   user was told "the model could not form a tool call". Two changes: control characters inside an
   argument string are accepted (`json.loads(..., strict=False)`, which is the one deviation a
   drawing needs), and a call that still does not parse enters the transcript with `{}` so the
-  model sees the rejection and can try again. Tests: `tests/test_tool_argument_repair.py`.
+  model sees the rejection and can try again. A call that mixed the XML pseudo-call into its JSON
+  values — `name="Пеликан.svg</parameter><parameter=format>svg"`, which once produced a document
+  named `parameter>svg.md` — is refused as `argument_markup` instead of being written, and an
+  absent format follows an `.svg` name. Tests: `tests/test_tool_argument_repair.py`,
+  `tests/test_write_document.py`.
 
 - **A renamed document is reported as renamed.** The server never overwrites a name: an existing
   one becomes "name (2)". Measured, the model then told the user the name it had asked for while

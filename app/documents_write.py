@@ -232,7 +232,17 @@ def write_document_file(
     sheets: list | None = None,
 ) -> WrittenDocument:
     """Store one document, or extend one this tool wrote. Refuses before writing."""
-    format_key = str(fmt or "md").strip().lower().lstrip(".")
+    # Measured: a model mixed the XML pseudo-call into the JSON values —
+    # name="Пеликан.svg</parameter><parameter=format>svg" — and the write
+    # happily produced "parameter>svg.md". That is not a document name.
+    raw_name = str(name or "")
+    raw_format = str(fmt or "")
+    if any(marker in raw_name or marker in raw_format for marker in ("<parameter=", "</parameter>", "<function=")):
+        raise DocumentWriteError("argument_markup")
+    format_key = raw_format.strip().lower().lstrip(".")
+    if not format_key:
+        # The name is the next best statement of intent.
+        format_key = "svg" if raw_name.strip().lower().endswith(".svg") else "md"
     if format_key not in FORMAT_EXTENSIONS:
         raise DocumentWriteError("format", format_key)
     extension = FORMAT_EXTENSIONS[format_key]

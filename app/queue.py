@@ -191,9 +191,12 @@ def tool_stage_from_prefix(tool_name: str, arguments: str = "") -> str | None:
     """
     if tool_name == "write_document":
         found = _FORMAT_IN_STREAM.search(arguments or "")
-        if not found:
-            return None
-        return "drawing_svg" if found.group(1).lower() == "svg" else "writing_document"
+        if found and found.group(1).lower() == "svg":
+            return "drawing_svg"
+        # A document is a document from the first moment; the format only decides
+        # whether it is a drawing. Measured: a call without a format key showed no
+        # status at all for the whole generation.
+        return "writing_document"
     return TOOL_STAGES.get(tool_name)
 
 
@@ -5822,6 +5825,10 @@ class RedisRequestQueue:
             if announced.get(tool_name) != stage:
                 announced[tool_name] = stage
                 session.report_stage(stage)
+            if tool_name == "write_document":
+                # Keep asking until the format is readable: a drawing must replace
+                # the generic label rather than never appear.
+                return bool(_FORMAT_IN_STREAM.search(arguments or ""))
             return True
 
         def generate(round_tool_choice: str | None) -> Turn:

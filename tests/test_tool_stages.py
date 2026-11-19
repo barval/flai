@@ -142,11 +142,12 @@ def test_the_stream_is_asked_again_until_the_label_is_final(monkeypatch):
 
 
 @pytest.mark.unit
-def test_the_stage_waits_for_a_format_it_can_read():
+def test_a_document_is_announced_before_its_format_is_known():
+    """Measured: a call without a format key showed no status at all."""
     from app.queue import tool_stage_from_prefix
 
-    assert tool_stage_from_prefix("write_document", "") is None
-    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "sv') is None
+    assert tool_stage_from_prefix("write_document", "") == "writing_document"
+    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "sv') == "writing_document"
     assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "svg"') == "drawing_svg"
     assert tool_stage_from_prefix("write_document", '{"format": "md"') == "writing_document"
     assert tool_stage_from_prefix("web_search", "") == "searching_web"

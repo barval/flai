@@ -1693,6 +1693,9 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
         messages = {
             "empty": _("There is nothing to write: the content is empty"),
             "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, svg, docx, xlsx or pdf"),
+            "argument_markup": _(
+                "The arguments carry XML markup instead of plain values. Send the call again with JSON values only."
+            ),
             "too_large": _("The document is too large (limit {limit} KB)").format(
                 limit=documents_write.MAX_CONTENT_BYTES // 1024
             ),
@@ -1747,7 +1750,9 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
             login,
             str(kw.get("name", "")),
             content=str(kw.get("content") or ""),
-            fmt=str(kw.get("format") or "md"),
+            # An absent format is inferred by the writer (from a .svg name); passing
+            # "md" here would make "no format" indistinguishable from "markdown".
+            fmt=str(kw.get("format") or ""),
             rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
             append=bool(kw.get("append")),
             sheets=kw.get("sheets") if isinstance(kw.get("sheets"), list) else None,

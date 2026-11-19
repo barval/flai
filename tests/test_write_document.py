@@ -70,6 +70,21 @@ def test_an_existing_name_gets_a_suffix_and_nothing_is_overwritten(writer_env):
     assert (writer_env / LOGIN / f"{first.id}.md").read_text(encoding="utf-8").strip() == "one"
 
 
+def test_xml_markup_in_the_arguments_is_refused(writer_env):
+    """Measured: a model sent name="Пеликан.svg</parameter><parameter=format>svg"."""
+    with pytest.raises(DocumentWriteError) as caught:
+        write_document_file(LOGIN, "Пеликан на велосипеде.svg</parameter>", "<svg/>", fmt="")
+
+    assert caught.value.code == "argument_markup"
+    assert not list(writer_env.glob(f"{LOGIN}/*"))
+
+
+def test_a_missing_format_follows_the_svg_name(writer_env):
+    doc = write_document_file(LOGIN, "scene.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>', fmt="")
+
+    assert doc.filename == "scene.svg"
+
+
 def test_the_answer_explains_a_renamed_file(writer_env):
     """Measured: the model told the user the name it asked for while the file had another."""
     from app.tools import _exec_write_document

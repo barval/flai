@@ -109,8 +109,13 @@ A run is a short service loop, so it cannot appear in the Tasks tab — by const
 than by a filter a later query could forget — and it costs a few model calls instead of a
 whole plan.
 
-- **Queued one minute ahead** (`SCHEDULER_ACTION_LEAD_MIN`, default 1): a run takes seconds,
-  so the answer is ready at the target instead of arriving late by design.
+- **Queued ahead by what it costs.** A run takes seconds — measured, some checks take minutes —
+  so it is queued early enough to have the answer at its target. With history, the lead is the
+  **median of the item's own completed runs plus 30 s** (`SCHEDULER_ADAPTIVE_LEAD`), bounded by
+  `SCHEDULER_LEAD_MAX_MIN` and, for a frequent action, by half its interval. Without history
+  the configured `SCHEDULER_ACTION_LEAD_MIN` (default 1) is the answer, and it is always the
+  floor. The queue query uses the ceiling as its window, so a long-running item is not missed;
+  each item is then judged by its own lead.
 - **Overlap is refused, not queued.** While the previous run of the same item is queued or
   running, the new firing is skipped; a pile behind one GPU is not a schedule.
 - **The answer waits for its time.** A run finished early is delivered at its target; one
@@ -158,7 +163,10 @@ message from a schedule the user removed is what they would report as a bug.
 | `SCHEDULER_MISSED_REMINDER` | all / last / none for reminders | `last` |
 | `SCHEDULER_MISSED_ACTION` | all / last / none for actions | `last` |
 | `SCHEDULER_CATCHUP_MAX` | the most firings one catch-up delivers | `20` |
-| `SCHEDULER_ACTION_LEAD_MIN` | minutes before its target a run is queued | `1` |
+| `SCHEDULER_ACTION_LEAD_MIN` | minutes before its target a run is queued; the floor and the no-history answer | `1` |
+| `SCHEDULER_ADAPTIVE_LEAD` | lead by the median of the item's own completed runs | `1` |
+| `SCHEDULER_LEAD_MARGIN_S` | seconds added to that median | `30` |
+| `SCHEDULER_LEAD_MAX_MIN` | the largest lead the measured history may ask for | `10` |
 | `SCHEDULER_RUN_ROUNDS` | model rounds one run may spend | `3` |
 | `SCHEDULER_RUN_TIMEOUT_S` | seconds one run may take; checked before each round | `180` |
 | `SCHEDULER_MAX_LATENESS_MIN` | minutes after its target a run that never started is cancelled | `60` |

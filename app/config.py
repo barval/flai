@@ -286,6 +286,15 @@ def load_config(app):
     app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
     # A run takes seconds, so one minute of lead is enough to have the answer ready on time.
     app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "1"))
+    # Measured, not assumed: the lead follows the median duration of the item's own
+    # completed runs plus a margin, capped so one slow day does not redefine the schedule.
+    app.config["SCHEDULER_ADAPTIVE_LEAD"] = os.getenv("SCHEDULER_ADAPTIVE_LEAD", "1").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    app.config["SCHEDULER_LEAD_MARGIN_S"] = int(os.getenv("SCHEDULER_LEAD_MARGIN_S", "30"))
+    app.config["SCHEDULER_LEAD_MAX_MIN"] = int(os.getenv("SCHEDULER_LEAD_MAX_MIN", "10"))
     app.config["SCHEDULER_RUN_ROUNDS"] = int(os.getenv("SCHEDULER_RUN_ROUNDS", "3"))
     app.config["SCHEDULER_RUN_TIMEOUT_S"] = int(os.getenv("SCHEDULER_RUN_TIMEOUT_S", "180"))
     app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))

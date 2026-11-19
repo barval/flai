@@ -147,6 +147,9 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "SCHEDULER_MISSED_ACTION",
             "SCHEDULER_CATCHUP_MAX",
             "SCHEDULER_ACTION_LEAD_MIN",
+            "SCHEDULER_ADAPTIVE_LEAD",
+            "SCHEDULER_LEAD_MARGIN_S",
+            "SCHEDULER_LEAD_MAX_MIN",
             "SCHEDULER_MAX_LATENESS_MIN",
             "SCHEDULER_ACTION_MIN_MINUTES",
             "SCHEDULER_RUN_ROUNDS",
@@ -676,8 +679,15 @@ DESCRIPTIONS: dict[str, str] = {
         "The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped"
     ),
     "SCHEDULER_ACTION_LEAD_MIN": (
-        "Minutes before its target an action is queued, so its answer is ready on time"
+        "Minutes before its target an action is queued, so its answer is ready on time; this"
+        " is the floor and the answer when there is no history to measure"
     ),
+    "SCHEDULER_ADAPTIVE_LEAD": (
+        "Queue an action ahead by the median of its own recent completed runs instead of the"
+        " fixed lead"
+    ),
+    "SCHEDULER_LEAD_MARGIN_S": "Seconds added to that median before converting it to whole minutes",
+    "SCHEDULER_LEAD_MAX_MIN": "The largest lead the measured history may ask for, in minutes",
     "SCHEDULER_MAX_LATENESS_MIN": (
         "Minutes after its target a run that never started is cancelled with a short notice"
     ),

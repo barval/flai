@@ -1,6 +1,43 @@
 ## [v13.6] — Unreleased
 
+### Changed
+
+- **The type check runs and blocks CI.** `mypy app/ modules/` was advisory (`|| true`) and, as
+  configured, did not run at all: `python_version = "3.11"` met numpy 2.5's stub, written with
+  PEP 695 syntax, and mypy aborted before reaching `app/`. It now targets 3.12 — the runtime is
+  still 3.11, and `python -m compileall` in the same CI job guards that the code parses there —
+  and the `|| true` is gone. The backlog is bounded rather than hidden: the 38 modules that still
+  carry errors are listed with `ignore_errors` in `pyproject.toml`, and
+  `check_mypy_ratchet.py` fails an entry that no longer reports anything, so the list can only
+  shrink. Three findings were real defects and are fixed: `update_task`/`update_step` are
+  annotated `dict | None`, which is what they already returned; a bytes `stderr` slice is
+  decoded before it reaches a log line; and `CamModule.camera_api_url` starts as an empty string
+  instead of `None`, so `.rstrip()` cannot raise before `init_app()`.
+
 ### Added
+
+- **The assistant can change what it wrote.** `edit_document` replaces the body of a generated
+  document and `restore_document_version` brings an earlier state back. An upload is refused
+  rather than edited: its bytes may be shared with everyone the document is shared with, so a
+  request to fix one is answered by writing a new document built from it, under a different
+  name. The format is fixed by the existing document — an edit cannot turn `.md` into `.docx` —
+  and a container is re-rendered from the body stored in `document_versions`, which is also the
+  only way a PDF can come back: a PDF is a drawing, not text, so it is never patched byte by
+  byte. History is append-only (a restore is itself a new version, so undoing one is another
+  restore), the last 10 states are kept and are not charged to the quota, and an edit marks an
+  indexed document `stale` so search cannot serve the old body. Tests:
+  `tests/test_documents_edit.py`.
+
+- **An action is queued by what it actually costs.** The lead was a constant, so a check that
+  takes four minutes was queued a minute ahead and delivered late by design, while a two-second
+  probe held the queue early for no reason. `action_lead_minutes()` now takes the **median of the
+  item's last five completed runs plus 30 s**, bounded by `SCHEDULER_LEAD_MAX_MIN` (10) and, for
+  a frequent action, by half its interval; `SCHEDULER_ACTION_LEAD_MIN` stays the floor and the
+  answer until there is history. The tick fetches with the ceiling as its window and judges each
+  item by its own lead, so a long-running item is not missed. Three settings in Admin → Settings
+  → Scheduler: `SCHEDULER_ADAPTIVE_LEAD`, `SCHEDULER_LEAD_MARGIN_S`, `SCHEDULER_LEAD_MAX_MIN`.
+  The margin is a starting point, not a measurement on the reference card. Tests:
+  `tests/test_scheduler_lead.py`.
 
 - **A weekly schedule can name several days.** "Every Tuesday and Thursday at 19:45" used to
   become a single Thursday item: a weekly row held one `weekday`, and the server took the

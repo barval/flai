@@ -1169,7 +1169,7 @@ def _init_postgresql():
             body          TEXT NOT NULL DEFAULT '',
             repeat        TEXT NOT NULL DEFAULT 'once',
             every_minutes INTEGER,
-            weekday       SMALLINT,
+            weekdays      SMALLINT[],
             day_of_month  SMALLINT,
             time_of_day   TIME,
             timezone      TEXT NOT NULL DEFAULT 'UTC',
@@ -1183,6 +1183,24 @@ def _init_postgresql():
         "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
         " WHERE enabled AND next_run_at IS NOT NULL"
     )
+    # v13.6: a weekly item repeats on a set of weekdays, so "every Tuesday and Thursday" is
+    # one schedule rather than two. An installation that predates the set carries a single
+    # `weekday`; it is folded into the array and then dropped, because two columns holding
+    # the same fact is how a later reader ends up trusting the stale one.
+    c.execute("ALTER TABLE scheduler_items ADD COLUMN IF NOT EXISTS weekdays SMALLINT[]")
+    c.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'scheduler_items' AND column_name = 'weekday'
+            ) THEN
+                UPDATE scheduler_items SET weekdays = ARRAY[weekday]
+                WHERE repeat = 'weekly' AND weekdays IS NULL AND weekday IS NOT NULL;
+            END IF;
+        END $$
+    """)
+    c.execute("ALTER TABLE scheduler_items DROP COLUMN IF EXISTS weekday")
 
     # v13.5: one row per firing of an action. A run is not a task — it is a short service
     # loop — so it lives in its own table and the Tasks tab cannot show it by construction.

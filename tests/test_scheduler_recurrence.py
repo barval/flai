@@ -22,6 +22,7 @@ def _item(**over):
         "repeat": "daily",
         "every_minutes": None,
         "weekday": None,
+        "weekdays": None,
         "day_of_month": None,
         "time_of_day": time(9, 0),
         "timezone": MOSCOW,
@@ -70,6 +71,39 @@ def test_weekly_lands_on_the_weekday():
     item = _item(repeat="weekly", weekday=4)  # Friday
 
     assert next_after(item, _moment("2026-11-18T09:00")) == _moment("2026-11-20T09:00")
+
+
+def test_weekly_covers_a_set_of_days():
+    """«Every Tuesday and Thursday» is one schedule, not two."""
+    item = _item(repeat="weekly", weekdays=[1, 3])  # Tuesday, Thursday
+
+    assert next_after(item, _moment("2026-11-18T09:00")) == _moment("2026-11-19T09:00")
+
+
+def test_weekly_set_skips_a_day_whose_moment_already_passed():
+    item = _item(repeat="weekly", weekdays=[1, 3])
+
+    # Thursday 09:00 has fired; the next Tuesday is sooner than the next Thursday.
+    assert next_after(item, _moment("2026-11-19T10:00")) == _moment("2026-11-24T09:00")
+
+
+def test_weekly_set_keeps_the_wall_clock_across_a_dst_change():
+    berlin = "Europe/Berlin"
+    item = _item(repeat="weekly", weekdays=[6, 0], timezone=berlin)  # Sunday, Monday
+    moment = _moment("2027-03-26T09:00", berlin)
+
+    following = next_after(item, moment)
+
+    assert following.weekday() == 6
+    assert following.hour == 9
+    assert following.utcoffset() != moment.utcoffset()
+
+
+def test_an_unusable_weekday_set_falls_back_to_a_known_day():
+    """A broken set must still produce a schedule instead of an endless loop."""
+    item = _item(repeat="weekly", weekdays=[9])
+
+    assert next_after(item, _moment("2026-11-18T09:00")) == _moment("2026-11-23T09:00")
 
 
 def test_monthly_with_a_missing_day_uses_the_last_one():

@@ -36,6 +36,11 @@ server checks it, stores it and answers with the concrete time — "🔔 Reminde
 November, 09:00". That answer is the only chance to notice a misunderstanding before it
 fires, which is why it always names the stored moment.
 
+A request naming several weekdays is **one item**, not one per day: "every Tuesday and
+Thursday at 19:45" stores the set and fires on the sooner of the two at that time. Two
+separate reminders would drift apart as soon as one of them was edited or deleted, and
+the person would have to remember that a single agreement lives in two rows.
+
 | Situation | What happens |
 |---|---|
 | A one-off in the past | refused with `⚠️` and a question — nothing is created |
@@ -53,7 +58,7 @@ A closed set, computed on the **wall clock of the installation's zone**:
 | `once` | fires once; the row stays in the list as finished |
 | `minutes` | every N minutes; the minimum is 15, because anything faster is a busy loop wearing a schedule's clothes |
 | `daily` | the same local time every day |
-| `weekly` | the same local time on the chosen weekday |
+| `weekly` | the same local time on the chosen weekdays — a **set**, so "every Tuesday and Thursday" is one schedule |
 | `monthly` | the same local time on the chosen day; a month without it (the 31st in February) fires on its last day rather than skipping |
 
 Nine in the morning stays nine across a daylight-saving change: the next firing is computed

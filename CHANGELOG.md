@@ -1,5 +1,19 @@
 ## [v13.6] — Unreleased
 
+### Added
+
+- **A weekly schedule can name several days.** "Every Tuesday and Thursday at 19:45" used to
+  become a single Thursday item: a weekly row held one `weekday`, and the server took the
+  weekday of the moment the model handed over — today's, since only a time was named. The
+  answer then told the person the system could not choose weekdays at all, which was wrong in
+  both directions. `scheduler_items` now stores `weekdays SMALLINT[]` (Python numbering; the
+  tools take ISO 1–7), `next_after()` fires on the soonest day of the set, and one item covers
+  the whole agreement, so editing or deleting it cannot leave a second copy behind. Two
+  weekdays with any other repeat, or a set that cannot be read, are refused with `⚠️` instead
+  of being silently ignored. The old `weekday` column is folded into the array and dropped on
+  the first start after the upgrade. Tests: `tests/test_scheduler_recurrence.py`,
+  `tests/test_scheduler_tools.py`.
+
 ## [v13.5] — 2026-11-19
 
 ### Changed

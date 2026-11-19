@@ -96,6 +96,29 @@ def is_due_now(item: dict, moment: datetime, max_lead: int) -> bool:
     return moment >= scheduled
 
 
+def _weekday_set(item: dict) -> list[int]:
+    """The weekdays a weekly item fires on, Monday = 0.
+
+    A weekly item carries a set, so "every Tuesday and Thursday" is one schedule. A row
+    written before the set existed carries a single ``weekday`` and is read as a set of one,
+    which is also the fallback for a set that cannot be used.
+    """
+    raw = item.get("weekdays")
+    if raw is None:
+        raw = [item["weekday"]] if item.get("weekday") is not None else [0]
+    if isinstance(raw, (int, str)):
+        raw = [raw]
+    days = set()
+    for value in raw:
+        try:
+            day = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= day <= 6:
+            days.add(day)
+    return sorted(days) or [0]
+
+
 def next_after(item: dict, moment: datetime) -> datetime | None:
     """The first firing strictly after ``moment``, or None for a one-off.
 
@@ -122,13 +145,15 @@ def next_after(item: dict, moment: datetime) -> datetime | None:
         return candidate
 
     if repeat == "weekly":
-        weekday = int(item.get("weekday") if item.get("weekday") is not None else 0)
-        candidate = _at(item, local)
-        ahead = (weekday - local.weekday()) % 7
-        candidate = _at(item, local + timedelta(days=ahead))
-        if candidate <= local:
-            candidate = _at(item, local + timedelta(days=ahead + 7))
-        return candidate
+        first = None
+        for weekday in _weekday_set(item):
+            ahead = (weekday - local.weekday()) % 7
+            candidate = _at(item, local + timedelta(days=ahead))
+            if candidate <= local:
+                candidate = _at(item, local + timedelta(days=ahead + 7))
+            if first is None or candidate < first:
+                first = candidate
+        return first
 
     if repeat == "monthly":
         day = int(item.get("day_of_month") or 1)

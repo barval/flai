@@ -391,7 +391,21 @@ _IN_MINUTES_SCHEMA = {
 _REPEAT_SCHEMA = {
     "type": "string",
     "enum": ["once", "minutes", "daily", "weekly", "monthly"],
-    "description": "Default once. daily/weekly/monthly repeat at the same local time.",
+    "description": (
+        "Default once. daily/weekly/monthly repeat at the same local time; weekly repeats "
+        "on the weekdays named in `weekdays`, or on the day of `when` when none are given."
+    ),
+}
+
+_WEEKDAYS_SCHEMA = {
+    "type": "array",
+    "items": {"type": "integer", "minimum": 1, "maximum": 7},
+    "description": (
+        "For repeat=weekly when several days were named: the days as ISO numbers, "
+        "1 = Monday … 7 = Sunday. One item covers the whole set — 'every Tuesday and "
+        "Thursday at 19:45' is weekdays [2, 4], not two reminders. Omit it when the "
+        "request names a single day: the day of `when` is used."
+    ),
 }
 
 _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
@@ -412,6 +426,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                     "text": {"type": "string", "description": "What to send at that moment"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
+                    "weekdays": _WEEKDAYS_SCHEMA,
                     "every_minutes": {
                         "type": "integer",
                         "description": "For repeat=minutes: the interval, at least 15",
@@ -441,6 +456,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                     "goal": {"type": "string", "description": "What has to be done, in full"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
+                    "weekdays": _WEEKDAYS_SCHEMA,
                     "every_minutes": {
                         "type": "integer",
                         "description": "For repeat=minutes: the interval, at least 15",
@@ -1431,6 +1447,10 @@ def _schedule_refusal(language: str, refusal) -> str:
             )
         if refusal.code == "repeat_unclear":
             return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
+        if refusal.code == "weekdays_unclear":
+            return "⚠️ " + str(_("I could not tell which weekdays. Name them as 1 = Monday … 7 = Sunday"))
+        if refusal.code == "weekdays_not_weekly":
+            return "⚠️ " + str(_("Several weekdays only make sense for a weekly schedule"))
         if refusal.code == "in_the_past":
             return "⚠️ " + str(_("That time has already passed: {when}. When should it happen?")).format(
                 when=refusal.params.get("when").strftime("%Y-%m-%d %H:%M")
@@ -1531,6 +1551,7 @@ def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
             every_minutes=kw.get("every_minutes"),
             zone_name=zone_name,
             in_minutes=kw.get("in_minutes"),
+            weekdays=kw.get("weekdays"),
         )
     except scheduler_tools.ScheduleRefusalError as refusal:
         return _schedule_refusal(language, refusal)

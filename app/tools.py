@@ -567,6 +567,71 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
     },
 }
 
+EDIT_DOCUMENT_TOOL = "edit_document"
+RESTORE_DOCUMENT_VERSION_TOOL = "restore_document_version"
+
+_EDIT_DOCUMENT_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": EDIT_DOCUMENT_TOOL,
+        "description": (
+            "Replace the contents of a document this assistant wrote. Only a generated "
+            "document can be changed: an uploaded file is never modified in place, because "
+            "its bytes may be shared — write a NEW document from it with write_document "
+            "instead. The format stays what it was and the whole new body is passed, not a "
+            "diff. The previous state is kept as a version, so the change can be undone."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "type": "string",
+                    "description": "The document's display name as the user sees it, e.g. 'October report.md'",
+                },
+                "content": {"type": "string", "description": "The whole new text of the document"},
+                "rows": {
+                    "type": "array",
+                    "description": "For a csv or xlsx document: the replacement rows",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                },
+                "sheets": {
+                    "type": "array",
+                    "description": "For an xlsx document with several sheets: each {name, rows}",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+                        },
+                        "required": ["name", "rows"],
+                    },
+                },
+            },
+            "required": ["document"],
+        },
+    },
+}
+
+_RESTORE_DOCUMENT_VERSION_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": RESTORE_DOCUMENT_VERSION_TOOL,
+        "description": (
+            "Bring back an earlier version of a document this assistant wrote. Use it when the "
+            "user says the last change was wrong. Omit version to undo the most recent edit; "
+            "history is append-only, so a restore is itself a new version."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string", "description": "The document's display name"},
+                "version": {"type": "integer", "description": "The version to bring back; omit for the previous one"},
+            },
+            "required": ["document"],
+        },
+    },
+}
+
 # ── Network diagnostics (v13.5) ───────────────────────────────────────────────
 # Advertised only when the netdiag sidecar answers, and gated per user at execution
 # time: a hidden tool cannot tell the person why it refused.
@@ -715,7 +780,11 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
     return (
         list(definitions)
-        + [_WRITE_DOCUMENT_DEFINITION]
+        + [
+            _WRITE_DOCUMENT_DEFINITION,
+            _EDIT_DOCUMENT_DEFINITION,
+            _RESTORE_DOCUMENT_VERSION_DEFINITION,
+        ]
         + _scheduler_definitions()
         + skill_tool_definitions()
         + mcp_tool_definitions()
@@ -1515,7 +1584,8 @@ def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
     try:
         from app.tasks.events import publish_task_update
 
-        publish_task_update(current_app, task)
+        if task is not None:
+            publish_task_update(current_app, task)
     except Exception:  # noqa: BLE001 - a live view is advisory, never fatal
         current_app.logger.debug("could not publish the new task")
     current_app.logger.info(f"service run started task {task_id} ({prefixed})")
@@ -1589,6 +1659,8 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
     WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    EDIT_DOCUMENT_TOOL: lambda ctx, **kw: _exec_edit_document(ctx, **kw),
+    RESTORE_DOCUMENT_VERSION_TOOL: lambda ctx, **kw: _exec_restore_document_version(ctx, **kw),
     "start_task": lambda ctx, **kw: _exec_start_task(ctx, **kw),
     "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
     "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
@@ -1635,6 +1707,15 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
             "too_many_columns": _("Too many columns in one row (max {detail})"),
             "bad_rows": _("The rows are not a list of rows"),
             "bad_sheets": _("The sheets are not a list of {name, rows} objects"),
+            "target_missing": _("Which document? Name it as it appears in your documents"),
+            "not_found": _("There is no document named {detail}"),
+            "not_generated": _(
+                "Only a document this assistant wrote can be edited: {detail} is an upload —"
+                " make a new document from it instead"
+            ),
+            "ambiguous": _("More than one document matches {detail}; name one exactly"),
+            "no_versions": _("There is no earlier version of {detail}"),
+            "version_not_found": _("There is no version {detail} of that document"),
         }
         text = messages.get(code, _("The document could not be written"))
         if "{detail}" in text:
@@ -1682,6 +1763,72 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
         )
 
 
+def _exec_edit_document(ctx: dict[str, Any], **kw: Any) -> str:
+    """Replace a generated document's body; the previous state stays as a version."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.edit_document_file(
+            login,
+            str(kw.get("document") or ""),
+            content=str(kw.get("content") or ""),
+            rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+            sheets=kw.get("sheets") if isinstance(kw.get("sheets"), list) else None,
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed edit is a sentence, not a crash
+        logger.exception("edit_document failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Updated {name} — version {version} ({size} KB).").format(
+                name=written.filename, version=written.version, size=size_kb
+            )
+        )
+
+
+def _exec_restore_document_version(ctx: dict[str, Any], **kw: Any) -> str:
+    """Bring an earlier state back as a new version."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.restore_document_version(
+            login,
+            str(kw.get("document") or ""),
+            version=kw.get("version"),
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed restore is a sentence, not a crash
+        logger.exception("restore_document_version failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Restored {name} — now version {version} ({size} KB).").format(
+                name=written.filename, version=written.version, size=size_kb
+            )
+        )
+
+
 def _exec_activate_skill(name: str, lang: str) -> str:
     """Return a skill's body, or say which name is not in the catalog."""
     from app.skills import activate
@@ -1714,7 +1861,13 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS):
+    for keep in (
+        SKILL_LOADER_TOOL,
+        WRITE_DOCUMENT_TOOL,
+        EDIT_DOCUMENT_TOOL,
+        RESTORE_DOCUMENT_VERSION_TOOL,
+        *SCHEDULER_TOOLS,
+    ):
         # Both survive narrowing: a turn that picked any other tool would otherwise
         # lose the skill loader, or the only way to hand the user a file.
         if not any(item["function"]["name"] == keep for item in chosen):

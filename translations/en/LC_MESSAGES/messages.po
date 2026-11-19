@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.6\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 13:14+0300\n"
+"POT-Creation-Date: 2026-11-19 13:34+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -203,7 +203,7 @@ msgstr "Could not connect to llama-server"
 #: app/llamacpp_client.py:1238 app/llamacpp_client.py:1532
 #: app/routes/admin.py:659 app/routes/admin.py:1339 app/routes/admin.py:1781
 #: app/routes/admin.py:1854 app/routes/admin.py:2108
-#: app/templates/admin.html:643 app/templates/chat.html:270 modules/cam.py:520
+#: app/templates/admin.html:643 app/templates/chat.html:270 modules/cam.py:529
 #: modules/sd_cpp.py:354 modules/sd_cpp.py:555 modules/video.py:828
 msgid "Error"
 msgstr "Error"
@@ -549,7 +549,7 @@ msgstr "⚠️ No link found in your message"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Crawler service is unavailable"
 
-#: app/queue.py:4974 app/tools.py:895
+#: app/queue.py:4974 app/tools.py:964
 msgid "This address is not available for reading"
 msgstr "⚠️ This address is not available for reading"
 
@@ -984,68 +984,69 @@ msgstr ""
 msgid "Describe the scene and motion the video must show."
 msgstr "Describe the scene and motion the video must show."
 
-#: app/tools.py:826
+#: app/tools.py:895
 msgid "Current time unavailable"
 msgstr "Current time unavailable"
 
-#: app/tools.py:841
+#: app/tools.py:910
 msgid "Division by zero"
 msgstr "Division by zero"
 
-#: app/tools.py:848
+#: app/tools.py:917
 #, python-brace-format
 msgid "Calculation error: {error}"
 msgstr "Calculation error: {error}"
 
-#: app/tools.py:853 app/tools.py:922 app/tools.py:964 app/tools.py:1292
-#: app/tools.py:1373 app/tools.py:1674 app/tools.py:1920 app/tools.py:1939
+#: app/tools.py:922 app/tools.py:991 app/tools.py:1033 app/tools.py:1361
+#: app/tools.py:1442 app/tools.py:1755 app/tools.py:1789 app/tools.py:1821
+#: app/tools.py:2073 app/tools.py:2092
 msgid "The tool could not complete the request."
 msgstr "The tool could not complete the request."
 
-#: app/tools.py:866
+#: app/tools.py:935
 msgid "Web search service unavailable"
 msgstr "Web search service unavailable"
 
-#: app/tools.py:874
+#: app/tools.py:943
 #, python-brace-format
 msgid "No results found for query: {query}"
 msgstr "No results found for query: {query}"
 
-#: app/tools.py:890
+#: app/tools.py:959
 msgid "Page reading service is unavailable"
 msgstr "⚠️ Page reading service is unavailable"
 
-#: app/tools.py:901
+#: app/tools.py:970
 msgid "Failed to read the page"
 msgstr "⚠️ Failed to read the page"
 
-#: app/tools.py:912
+#: app/tools.py:981
 msgid "Document search service unavailable"
 msgstr "Document search service unavailable"
 
-#: app/tools.py:915
+#: app/tools.py:984
 msgid "User not identified for document search"
 msgstr "User not identified for document search"
 
-#: app/tasks/runner.py:591 app/tools.py:926
+#: app/tasks/runner.py:591 app/tools.py:995
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
 
-#: app/tools.py:948
+#: app/tools.py:1017
 msgid "User not identified for conversation search"
 msgstr "User not identified for conversation search"
 
-#: app/tools.py:968
+#: app/tools.py:1037
 #, python-brace-format
 msgid "No past conversations found for query: {query}"
 msgstr "No past conversations found for query: {query}"
 
-#: app/tools.py:982 app/tools.py:1017 modules/cam.py:404 modules/cam.py:527
+#: app/tools.py:1051 app/tools.py:1086 modules/cam.py:409 modules/cam.py:536
 msgid "CCTV service unavailable"
 msgstr "CCTV service unavailable"
 
-#: app/tools.py:995
+#: app/tools.py:1064
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
@@ -1053,57 +1054,57 @@ msgstr ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
 
-#: app/tools.py:1005
+#: app/tools.py:1074
 msgid "Snapshot captured; no description is available."
 msgstr "Snapshot captured; no description is available."
 
-#: app/tools.py:1104 app/tools.py:1111 app/tools.py:1127 app/tools.py:1174
-#: app/tools.py:1177 app/tools.py:1185 app/tools.py:1231 app/tools.py:1234
-#: app/tools.py:1242 app/tools.py:1249 app/tools.py:1259 app/tools.py:1288
+#: app/tools.py:1173 app/tools.py:1180 app/tools.py:1196 app/tools.py:1243
+#: app/tools.py:1246 app/tools.py:1254 app/tools.py:1300 app/tools.py:1303
+#: app/tools.py:1311 app/tools.py:1318 app/tools.py:1328 app/tools.py:1357
 #, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Date calculation error: {error}"
 
-#: app/tools.py:1284
+#: app/tools.py:1353
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Unknown time_calc operation: {op}"
 
-#: app/tools.py:1345
+#: app/tools.py:1414
 msgid "User not identified for network tools"
 msgstr "User not identified for network tools"
 
-#: app/tools.py:1347
+#: app/tools.py:1416
 msgid "Network tools are not available to you."
 msgstr "Network tools are not available to you."
 
-#: app/tools.py:1349
+#: app/tools.py:1418
 msgid "The network diagnostics service is not running"
 msgstr "The network diagnostics service is not running"
 
-#: app/tools.py:1354
+#: app/tools.py:1423
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "This address is refused: {reason}"
 
-#: app/tools.py:1354
+#: app/tools.py:1423
 msgid "loopback or link-local"
 msgstr "loopback or link-local"
 
 # GPU memory error messages
-#: app/tools.py:1358
+#: app/tools.py:1427
 msgid "Too many network calls; try again in a minute."
 msgstr "Too many network calls; try again in a minute."
 
-#: app/tools.py:1367
+#: app/tools.py:1436
 msgid "The diagnostics service returned nothing"
 msgstr "The diagnostics service returned nothing"
 
-#: app/tools.py:1437
+#: app/tools.py:1506
 msgid "I could not tell the time. When should it happen?"
 msgstr "I could not tell the time. When should it happen?"
 
-#: app/tools.py:1443
+#: app/tools.py:1512
 #, python-brace-format
 msgid ""
 "An action cannot run more often than every {minutes} minutes on this "
@@ -1112,89 +1113,89 @@ msgstr ""
 "An action cannot run more often than every {minutes} minutes on this "
 "installation"
 
-#: app/tools.py:1445
+#: app/tools.py:1514
 #, python-brace-format
 msgid "A reminder cannot repeat more often than every {minutes} minutes"
 msgstr "A reminder cannot repeat more often than every {minutes} minutes"
 
-#: app/tools.py:1449
+#: app/tools.py:1518
 msgid "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 msgstr "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 
-#: app/tools.py:1451
+#: app/tools.py:1520
 msgid "I could not tell which weekdays. Name them as 1 = Monday … 7 = Sunday"
 msgstr "I could not tell which weekdays. Name them as 1 = Monday … 7 = Sunday"
 
-#: app/tools.py:1453
+#: app/tools.py:1522
 msgid "Several weekdays only make sense for a weekly schedule"
 msgstr "Several weekdays only make sense for a weekly schedule"
 
-#: app/tools.py:1455
+#: app/tools.py:1524
 #, python-brace-format
 msgid "That time has already passed: {when}. When should it happen?"
 msgstr "That time has already passed: {when}. When should it happen?"
 
-#: app/tools.py:1459
+#: app/tools.py:1528
 msgid "There is nothing to send or do. What should happen?"
 msgstr "There is nothing to send or do. What should happen?"
 
-#: app/tools.py:1461
+#: app/tools.py:1530
 #, python-brace-format
 msgid "That is too long to schedule (max {limit} characters)"
 msgstr "That is too long to schedule (max {limit} characters)"
 
-#: app/tools.py:1464
+#: app/tools.py:1533
 msgid "The schedule could not be created"
 msgstr "The schedule could not be created"
 
-#: app/tools.py:1485
+#: app/tools.py:1554
 msgid "Only a scheduled action can start a task"
 msgstr "Only a scheduled action can start a task"
 
-#: app/tools.py:1488 app/tools.py:1539
+#: app/tools.py:1557 app/tools.py:1609
 msgid "User not identified for the scheduler"
 msgstr "User not identified for the scheduler"
 
-#: app/tools.py:1491
+#: app/tools.py:1560
 msgid "There is nothing to do: the task needs a goal"
 msgstr "There is nothing to do: the task needs a goal"
 
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
 # view
-#: app/tools.py:1494
+#: app/tools.py:1563
 msgid "Background tasks are disabled on this installation"
 msgstr "Background tasks are disabled on this installation"
 
-#: app/tools.py:1504
+#: app/tools.py:1573
 #, python-brace-format
 msgid "🛠️ Scheduler: {name}"
 msgstr "🛠️ Scheduler: {name}"
 
-#: app/tools.py:1523
+#: app/tools.py:1593
 #, python-brace-format
 msgid "🛠️ {title} — the task is started and its result will appear in Tasks"
 msgstr "🛠️ {title} — the task is started and its result will appear in Tasks"
 
-#: app/tools.py:1563
+#: app/tools.py:1633
 #, python-brace-format
 msgid "Action scheduled for {when}"
 msgstr "Action scheduled for {when}"
 
-#: app/tools.py:1563
+#: app/tools.py:1633
 #, python-brace-format
 msgid "Reminder set for {when}"
 msgstr "Reminder set for {when}"
 
-#: app/tools.py:1568
+#: app/tools.py:1638
 #, python-brace-format
 msgid "then every {minutes} minutes"
 msgstr "then every {minutes} minutes"
 
-#: app/tools.py:1620
+#: app/tools.py:1692
 msgid "There is nothing to write: the content is empty"
 msgstr "There is nothing to write: the content is empty"
 
-#: app/tools.py:1621
+#: app/tools.py:1693
 #, python-brace-format
 msgid ""
 "Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
@@ -1203,78 +1204,109 @@ msgstr ""
 "Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
 " or pdf"
 
-#: app/tools.py:1622
+#: app/tools.py:1694
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "The document is too large (limit {limit} KB)"
 
-#: app/tools.py:1625
+#: app/tools.py:1697
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "The document storage quota is exhausted; delete something first"
 
-#: app/tools.py:1626
+#: app/tools.py:1698
 msgid "Can only append to a document this assistant wrote, not to an upload"
 msgstr "Can only append to a document this assistant wrote, not to an upload"
 
-#: app/tools.py:1627
+#: app/tools.py:1699
 msgid "The JSON does not parse, so nothing was written"
 msgstr "The JSON does not parse, so nothing was written"
 
-#: app/tools.py:1628
+#: app/tools.py:1700
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "The document name is not usable: {detail}"
 
-#: app/tools.py:1629
+#: app/tools.py:1701
 msgid "A table needs rows: a list of rows, each a list of cells"
 msgstr "A table needs rows: a list of rows, each a list of cells"
 
-#: app/tools.py:1630
+#: app/tools.py:1702
 msgid "Only text documents can grow: write a new file instead of appending"
 msgstr "Only text documents can grow: write a new file instead of appending"
 
-#: app/tools.py:1631
+#: app/tools.py:1703
 #, python-brace-format
 msgid "The document is too large to render ({detail} bytes)"
 msgstr "The document is too large to render ({detail} bytes)"
 
-#: app/tools.py:1632
+#: app/tools.py:1704
 msgid "The PDF renderer has no font with Cyrillic on this installation"
 msgstr "The PDF renderer has no font with Cyrillic on this installation"
 
-#: app/tools.py:1633
+#: app/tools.py:1705
 #, python-brace-format
 msgid "Too many sheets in one workbook (max {detail})"
 msgstr "Too many sheets in one workbook (max {detail})"
 
-#: app/tools.py:1634
+#: app/tools.py:1706
 #, python-brace-format
 msgid "Too many rows in one sheet (max {detail})"
 msgstr "Too many rows in one sheet (max {detail})"
 
-#: app/tools.py:1635
+#: app/tools.py:1707
 #, python-brace-format
 msgid "Too many columns in one row (max {detail})"
 msgstr "Too many columns in one row (max {detail})"
 
-#: app/tools.py:1636
+#: app/tools.py:1708
 msgid "The rows are not a list of rows"
 msgstr "The rows are not a list of rows"
 
-#: app/tools.py:1637
+#: app/tools.py:1709
 #, python-brace-format
 msgid "The sheets are not a list of {name, rows} objects"
 msgstr "The sheets are not a list of {name, rows} objects"
 
-#: app/tools.py:1639
+#: app/tools.py:1710
+msgid "Which document? Name it as it appears in your documents"
+msgstr "Which document? Name it as it appears in your documents"
+
+#: app/tools.py:1711
+#, python-brace-format
+msgid "There is no document named {detail}"
+msgstr "There is no document named {detail}"
+
+#: app/tools.py:1713
+#, python-brace-format
+msgid ""
+"Only a document this assistant wrote can be edited: {detail} is an upload"
+" — make a new document from it instead"
+msgstr "Only a document this assistant wrote can be edited: {detail} is an upload — make a new document from it instead"
+
+#: app/tools.py:1716
+#, python-brace-format
+msgid "More than one document matches {detail}; name one exactly"
+msgstr "More than one document matches {detail}; name one exactly"
+
+#: app/tools.py:1717
+#, python-brace-format
+msgid "There is no earlier version of {detail}"
+msgstr "There is no earlier version of {detail}"
+
+#: app/tools.py:1718
+#, python-brace-format
+msgid "There is no version {detail} of that document"
+msgstr "There is no version {detail} of that document"
+
+#: app/tools.py:1720
 msgid "The document could not be written"
 msgstr "The document could not be written"
 
-#: app/tools.py:1657
+#: app/tools.py:1738 app/tools.py:1774 app/tools.py:1808
 msgid "User not identified for documents"
 msgstr "User not identified for documents"
 
-#: app/tools.py:1679
+#: app/tools.py:1760
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1283,16 +1315,26 @@ msgstr ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1692
+#: app/tools.py:1794
+#, python-brace-format
+msgid "Updated {name} — version {version} ({size} KB)."
+msgstr "Updated {name} — version {version} ({size} KB)."
+
+#: app/tools.py:1826
+#, python-brace-format
+msgid "Restored {name} — now version {version} ({size} KB)."
+msgstr "Restored {name} — now version {version} ({size} KB)."
+
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1839
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Unknown skill: {name}"
 
-#: app/tools.py:1851
+#: app/tools.py:2004
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "The tool call was ignored: the last round of the loop has been reached."
 
-#: app/tools.py:1866
+#: app/tools.py:2019
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1300,11 +1342,11 @@ msgstr ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
 
-#: app/tools.py:1872
+#: app/tools.py:2025
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "The tool call was rejected: its arguments were not valid JSON."
 
-#: app/tools.py:1926
+#: app/tools.py:2079
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Unknown tool: {tool}"
@@ -1628,8 +1670,8 @@ msgstr "A bundled skill lives in the project and cannot be deleted"
 #: app/routes/tasks.py:824 app/routes/tasks.py:870 app/routes/tasks.py:968
 #: app/routes/tasks.py:978 app/routes/tasks.py:1151 app/routes/tasks.py:1173
 #: app/routes/tasks.py:1210 app/routes/tasks.py:1255 app/routes/tts.py:13
-#: app/templates/chat.html:200 modules/cam.py:544 modules/cam.py:550
-#: modules/cam.py:558 modules/cam.py:578
+#: app/templates/chat.html:200 modules/cam.py:553 modules/cam.py:559
+#: modules/cam.py:567 modules/cam.py:587
 msgid "Not authorized"
 msgstr "Not authorized"
 
@@ -6094,25 +6136,25 @@ msgstr "Log in"
 msgid "Request too long, please simplify your request"
 msgstr "Request too long, please simplify your request"
 
-#: modules/cam.py:412
+#: modules/cam.py:417
 #, python-brace-format
 msgid "Unknown room: {room}"
 msgstr "Unknown room: {room}"
 
-#: modules/cam.py:423
+#: modules/cam.py:428
 msgid "Access to this camera is denied"
 msgstr "Access to this camera is denied"
 
-#: modules/cam.py:500
+#: modules/cam.py:509
 msgid "Connection error"
 msgstr "Connection error"
 
-#: modules/cam.py:503
+#: modules/cam.py:512
 #, python-brace-format
 msgid "Timeout ({timeout}s)"
 msgstr "Timeout ({timeout}s)"
 
-#: modules/cam.py:510
+#: modules/cam.py:519
 #, python-brace-format
 msgid "Failed to get snapshot from camera {room_name}"
 msgstr "Failed to get snapshot from camera {room_name}"

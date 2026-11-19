@@ -108,6 +108,24 @@ Ask for it in plain language — "put a report together from these contracts and
 me as a file", "save that as a table". The tool answers with the stored name and the size,
 and reminds you about the index switch; until it is ticked the file is not searched.
 
+### Editing one, and going back
+
+`edit_document` replaces the body of a document this assistant wrote;
+`restore_document_version` brings an earlier state back. Both work **only** on generated
+documents: an upload is never changed in place, because its bytes may be shared with everyone
+the document is shared with — the answer to "fix my uploaded file" is a new document built
+from it, under a different name.
+
+The format is fixed by the existing document, so an edit cannot turn a `.md` into a `.docx`.
+A container is re-rendered from the body it was drawn from, and that is also how a PDF comes
+back: a PDF is a drawing, not text, so it is never patched byte by byte. History is
+append-only — a restore writes a new version with the old body, so undoing a restore is
+another restore — and the last 10 states are kept. Versions are metadata and are not charged
+to the document quota.
+
+An edit marks an indexed document `stale`: search must not keep serving the old body until
+the person ticks the index switch again.
+
 ## 1. Configure RAG in Admin Panel
 
 After starting the services, log in as admin and go to **Admin Panel → Models** tab. Scroll down to the **Chunks** section. Here you can fine-tune RAG behavior:

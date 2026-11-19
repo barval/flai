@@ -547,6 +547,28 @@ def _init_postgresql():
         END
         $migrate$
     """)
+    # v13.6: every state a generated document has been in. A text document's source is the
+    # file itself; a rendered .docx/.xlsx/.pdf keeps the body it was drawn from, because that
+    # body is the only thing that can be re-rendered — a PDF is a drawing, not text. Versions
+    # are not charged to the quota: they are bounded per document and small next to the files.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS document_versions (
+            id UUID PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL,
+            format TEXT NOT NULL DEFAULT 'md',
+            content TEXT NOT NULL DEFAULT '',
+            rows JSONB,
+            sheets JSONB,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (document_id, version)
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_versions_document"
+        " ON document_versions (document_id, version DESC)"
+    )
     c.execute("""
         CREATE TABLE IF NOT EXISTS document_folders (
             id TEXT PRIMARY KEY,

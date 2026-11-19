@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from app.tools import (
+    EDIT_DOCUMENT_TOOL,
+    RESTORE_DOCUMENT_VERSION_TOOL,
     SCHEDULER_TOOLS,
     SKILL_LOADER_TOOL,
     WRITE_DOCUMENT_TOOL,
@@ -14,7 +16,13 @@ from app.tools import (
 
 # Kept on purpose when the kernel narrows the list: the skill loader, the only way to
 # hand the user a file, and the scheduling tools. They are not part of "what was chosen".
-ALWAYS_KEPT = {SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS}
+ALWAYS_KEPT = {
+    SKILL_LOADER_TOOL,
+    WRITE_DOCUMENT_TOOL,
+    EDIT_DOCUMENT_TOOL,
+    RESTORE_DOCUMENT_VERSION_TOOL,
+    *SCHEDULER_TOOLS,
+}
 
 
 def _names(definitions):
@@ -43,6 +51,8 @@ def test_subset_is_returned_in_catalog_order():
     kept = {item["function"]["name"] for item in selected}
     assert SKILL_LOADER_TOOL in kept
     assert WRITE_DOCUMENT_TOOL in kept
+    assert EDIT_DOCUMENT_TOOL in kept
+    assert RESTORE_DOCUMENT_VERSION_TOOL in kept
 
 
 @pytest.mark.unit

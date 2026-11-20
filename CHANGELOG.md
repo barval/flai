@@ -161,6 +161,17 @@
   the first start after the upgrade. Tests: `tests/test_scheduler_recurrence.py`,
   `tests/test_scheduler_tools.py`.
 
+### Fixed
+
+- **The test suite no longer leaks a Tasks executor thread per app.** `create_app()` starts the
+  executor, and the fixture stopped the module singleton at teardown — which is not that app's
+  instance once a test resets it or a later app replaces it. The orphaned thread kept polling the
+  shared test database for the rest of the file and froze or interrupted tasks of later tests:
+  measured, a full run of `tests/test_tasks_executor.py` failed 2, then 5, then 4 of 190 tests
+  with different names, while every one of them passed alone. The fixture now holds the instance
+  it started and stops that one; two consecutive full runs are green (190 passed each).
+  Tests: `tests/conftest.py`, `tests/test_tasks_executor.py`.
+
 ### Migration
 
 - **`scheduler_items.weekday` is dropped on the first start after the upgrade.** The column held

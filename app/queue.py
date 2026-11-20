@@ -42,6 +42,7 @@ from .llamacpp_client import (
 )
 from .model_config import get_model_config
 from .model_status import answer_model_type
+from .svg_answer import SvgBlockFilter
 from .tools import (
     MAX_TOOL_ITERATIONS,
     ToolCallLoopGuard,
@@ -197,7 +198,7 @@ def tool_stage_from_prefix(tool_name: str, arguments: str = "") -> str | None:
     if tool_name == "write_document":
         found = _FORMAT_IN_STREAM.search(arguments or "")
         if found and found.group(1).lower() == "svg":
-            return "drawing_svg"
+            return "creating_svg"
         # A document is a document from the first moment; the format only decides
         # whether it is a drawing. Measured: a call without a format key showed no
         # status at all for the whole generation.
@@ -208,7 +209,7 @@ def tool_stage_from_prefix(tool_name: str, arguments: str = "") -> str | None:
 def tool_stage(tool_name: str, arguments: dict[str, Any] | None = None) -> str | None:
     """The progress stage for a finished call, or None when it needs no announcement."""
     if tool_name == "write_document" and (arguments or {}).get("format") == "svg":
-        return "drawing_svg"
+        return "creating_svg"
     return TOOL_STAGES.get(tool_name)
 
 
@@ -5617,6 +5618,47 @@ class RedisRequestQueue:
         else:
             messages.insert(0, {"role": "system", "content": block})
 
+    def _document_from_svg_answer(self, text: str, user_id: str, lang: str) -> tuple[str, str | None]:
+        """Store a drawing the model pasted as ```svg and name it in the answer.
+
+        Measured: a 13 000-character block reached the user as code, with no way to
+        open it and nothing in the library. The markup is validated and written by
+        the same writer `write_document` uses; a drawing that fails is left as text
+        rather than silently dropped.
+        """
+        from app import documents_write
+        from app.svg_answer import extract_svg_block, suggested_name
+
+        found = extract_svg_block(text)
+        if not found:
+            return text, None
+        start, end, markup = found
+        with force_locale(lang):
+            from flask_babel import gettext
+
+            # `gettext` spelled out, not aliased: the extractor reads that name.
+            fallback = str(gettext("Drawing"))
+        try:
+            written = documents_write.write_document_file(
+                user_id,
+                suggested_name(markup, fallback),
+                content=markup,
+                fmt="svg",
+            )
+        except Exception as exc:  # noqa: BLE001 - an invalid drawing stays text
+            self.logger.warning(f"svg answer: the pasted drawing was not stored: {exc}")
+            return text, None
+        size_kb = max(1, round(written.size / 1024))
+        with force_locale(lang):
+            from flask_babel import gettext as _
+
+            sentence = str(
+                _("Saved as {name} ({size} KB) in your documents. SVG documents are not indexed.").format(
+                    name=written.filename, size=size_kb
+                )
+            )
+        return text[:start] + sentence + text[end:], written.filename
+
     def _run_tool_calls(
         self,
         task: dict[str, Any],
@@ -5863,6 +5905,7 @@ class RedisRequestQueue:
             error_detected = False
             stream_tool_calls: list[dict[str, Any]] | None = None
             leak_filter = LeakedCallFilter()
+            svg_filter = SvgBlockFilter()
             loop_check_at = 0
             for chunk in llamacpp.chat_stream(
                 messages,
@@ -5883,7 +5926,12 @@ class RedisRequestQueue:
                     else:
                         visible = leak_filter.feed(chunk)
                         if visible:
-                            session.on_token(visible)
+                            visible = svg_filter.feed(visible)
+                            if visible:
+                                session.on_token(visible)
+                            elif svg_filter.suppressed and announced.get("svg_block") != "creating_svg":
+                                announced["svg_block"] = "creating_svg"
+                                session.report_stage("creating_svg")
                 if self._is_task_cancelled(task["id"]):
                     break
                 # The repetition guard used to be reasoning-only. Measured: a chat
@@ -5905,7 +5953,12 @@ class RedisRequestQueue:
             if not leak_filter.leaked and not error_detected:
                 tail = leak_filter.flush()
                 if tail:
-                    session.on_token(tail)
+                    tail = svg_filter.feed(tail)
+                    if tail:
+                        session.on_token(tail)
+                rest = svg_filter.flush()
+                if rest:
+                    session.on_token(rest)
             if error_detected:
                 return Turn(error=iteration_text)
             if leak_filter.leaked:
@@ -5964,6 +6017,9 @@ class RedisRequestQueue:
         full_response = strip_repetition_loop(loop_result.text)
         if len(full_response) < len(loop_result.text):
             self.logger.warning("Chat answer cut at a repetition loop after the stream")
+        full_response, saved_drawing = self._document_from_svg_answer(full_response, user_id, lang)
+        if saved_drawing:
+            self.logger.info(f"svg answer: the pasted drawing was stored as {saved_drawing!r}")
         last_tool_result = loop_result.last_tool_result
         if not full_response.strip() and not last_tool_result.strip():
             self.logger.warning("Chat model returned empty response after reasoning strip")

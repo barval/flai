@@ -21,7 +21,7 @@ def test_a_document_is_announced_as_a_document():
 
 
 def test_a_drawing_is_announced_as_a_drawing():
-    assert tool_stage("write_document", {"format": "svg"}) == "drawing_svg"
+    assert tool_stage("write_document", {"format": "svg"}) == "creating_svg"
 
 
 def test_the_call_is_announced_before_its_arguments_are_known():
@@ -42,7 +42,7 @@ def test_every_stage_has_a_label_and_a_translation():
     js = Path("app/static/js/events.js").read_text(encoding="utf-8")
     html = Path("app/templates/chat.html").read_text(encoding="utf-8")
     mapped = set(re.findall(r"^\s+[a-z_]+: '(stage_[a-z_]+)',", js, re.M))
-    for stage in sorted(set(TOOL_STAGES.values()) | {"drawing_svg"}):
+    for stage in sorted(set(TOOL_STAGES.values()) | {"creating_svg"}):
         key = f"stage_{stage}"
         assert key in mapped, f"{stage} has no STAGE_LABEL_KEYS entry"
         assert f"'{key}'" in html, f"{stage} has no translation in chat.html"
@@ -148,6 +148,20 @@ def test_a_document_is_announced_before_its_format_is_known():
 
     assert tool_stage_from_prefix("write_document", "") == "writing_document"
     assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "sv') == "writing_document"
-    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "svg"') == "drawing_svg"
+    assert tool_stage_from_prefix("write_document", '{"name": "x", "format": "svg"') == "creating_svg"
     assert tool_stage_from_prefix("write_document", '{"format": "md"') == "writing_document"
     assert tool_stage_from_prefix("web_search", "") == "searching_web"
+
+
+@pytest.mark.unit
+def test_an_unknown_stage_leaves_the_label_on_screen():
+    """A tab opened before an upgrade lacks the new stage id.
+
+    Measured: renaming a stage turned a label the user was already reading into the
+    generic "Working...", because every unknown id fell back to it.
+    """
+    js = Path("app/static/js/events.js").read_text(encoding="utf-8")
+
+    assert "hasOwnProperty.call(STAGE_LABEL_KEYS, data.stage)" in js
+    assert "_updateProgressElement(data.task_id, data.session_id, label);" in js
+    assert "if (text === undefined)" in js

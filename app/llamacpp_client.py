@@ -829,14 +829,21 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
             if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
-                # The model drifted into malformed tool syntax and repeated it until the
-                # server gave up. Answering without tools is what shipped before tools —
-                # a fallback, not a second failure.
-                self.logger.warning(f"chat_stream: malformed tool call from {model_type}, retrying without tools")
-                payload = _payload_without_tools(payload)
+                # A malformed tool call is a slip of one generation, not of the
+                # request: generate the round again with the tools first, and drop
+                # the catalogue only when it fails twice.
+                self.logger.warning(f"chat_stream: malformed tool call from {model_type}, retrying the round with tools")
                 response = requests.post(
                     f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                 )
+                if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                    self.logger.warning(
+                        f"chat_stream: malformed tool call twice from {model_type}, retrying without tools"
+                    )
+                    payload = _payload_without_tools(payload)
+                    response = requests.post(
+                        f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                    )
             if response.status_code != 200:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -1335,13 +1342,30 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                     )
                     if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                        # The model drifted into malformed tool syntax — a slip of that
+                        # one generation, not of the request. Dropping the catalogue was
+                        # the only fallback and it answered a document request with an
+                        # apology instead of the file (a 22 KB call the server could not
+                        # parse), so the round is generated again with the tools it needs.
                         self.logger.warning(
-                            f"chat_stream: malformed tool call from {model_type}, retrying without tools"
+                            f"chat_stream: malformed tool call from {model_type}, retrying the round with tools"
                         )
-                        payload = _payload_without_tools(payload)
                         response = requests.post(
                             f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                         )
+                        if (
+                            response.status_code == 500
+                            and payload.get("tools")
+                            and _tool_call_was_unparsable(response)
+                        ):
+                            # Twice in a row is a habit, not luck: answer without tools.
+                            self.logger.warning(
+                                f"chat_stream: malformed tool call twice from {model_type}, retrying without tools"
+                            )
+                            payload = _payload_without_tools(payload)
+                            response = requests.post(
+                                f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                            )
                     if response.status_code != 200:
                         # Retry on 502 (typical transient failure) OR on
                         # "Failed to load image" 400 (race condition when

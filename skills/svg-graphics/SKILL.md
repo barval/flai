@@ -29,6 +29,9 @@ CSS animations play there. Do not paste a wall of markup into the chat — descr
 result and let the preview show it. SVG documents are not indexed: the markup is not
 useful to document search.
 
+A page is the exception: when the user asks for an HTML page, deliver it as a ```html
+block in the answer. `write_document` has no html format, so a call for one is refused.
+
 `content` is a complete, self-contained SVG document. Always include
 `xmlns="http://www.w3.org/2000/svg"`, a `viewBox` and explicit `width`/`height`.
 

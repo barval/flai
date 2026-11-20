@@ -54,6 +54,18 @@ def test_the_card_and_the_panel_header_open_the_view():
     assert "openGraphView" in script
 
 
+def test_an_unindexed_document_offers_no_graph():
+    """A generated SVG is stored `not_indexed` and has no entities at all.
+
+    Measured: every drawing carried the 🕸️ button and opened an empty canvas, while
+    the graph API itself asks for `index_status = 'indexed'`.
+    """
+    documents = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
+
+    assert "const graphAvailable = doc.index_status === 'indexed' || doc.index_status === 'stale';" in documents
+    assert "${graphAvailable ? `<button class=\"graph-document-button\"" in documents
+
+
 def test_the_tooltip_exists_in_both_catalogs():
     assert "documents_view_in_graph" in Path("app/templates/chat.html").read_text(encoding="utf-8")
     for lang in ("en", "ru"):

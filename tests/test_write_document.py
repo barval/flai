@@ -219,3 +219,40 @@ def test_two_writers_of_the_same_name_do_not_collide(writer_env, test_app):
 
     assert not errors
     assert sorted(names) == ["note (2).md", "note.md"]
+
+
+def test_a_pasted_svg_becomes_a_document(writer_env):
+    """Measured: a 13 000-character ```svg block reached the user as code, not as a file."""
+    import logging
+
+    from app.queue import RedisRequestQueue
+
+    class _Stub:
+        logger = logging.getLogger("test")
+
+    text = (
+        "Вот схема.\n```svg\n"
+        '<svg xmlns="http://www.w3.org/2000/svg"><title>Пеликан</title>'
+        '<circle cx="5" cy="5" r="4"/></svg>\n```'
+    )
+    cleaned, saved = RedisRequestQueue._document_from_svg_answer(_Stub(), text, LOGIN, "ru")
+
+    assert saved == "Пеликан.svg"
+    assert "```svg" not in cleaned
+    assert "Пеликан.svg" in cleaned
+    assert "Вот схема." in cleaned
+
+
+def test_an_unsafe_pasted_svg_stays_text(writer_env):
+    import logging
+
+    from app.queue import RedisRequestQueue
+
+    class _Stub:
+        logger = logging.getLogger("test")
+
+    text = '```svg\n<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script></svg>\n```'
+    cleaned, saved = RedisRequestQueue._document_from_svg_answer(_Stub(), text, LOGIN, "ru")
+
+    assert saved is None
+    assert cleaned == text

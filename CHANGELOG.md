@@ -2,6 +2,31 @@
 
 ### Changed
 
+- **Only an indexed document offers the graph.** The 🕸️ button was unconditional, so every
+  generated SVG carried it while the graph API itself asks for `index_status = 'indexed'` — the
+  card opened an empty canvas, and the document had no entities at all (`kg_occurrences` 0 for all
+  four drawings). The button now appears for `indexed` and `stale` only; a generated file gains it
+  when the person ticks the index switch. Tests: `tests/test_graph_ui.py`.
+
+- **A malformed tool call is generated again instead of answered without tools.** Measured on a
+  22 KB HTML call: llama-server answered HTTP 500 "Failed to parse tool call arguments", and the
+  fallback dropped the whole catalogue, so the round answered "the model could not form a tool
+  call" instead of the file. The round is now generated again with the tools it needs, and only a
+  second failure falls back to an answer without them. The HTML request also cost a refused
+  `write_document(format="html")` first — `chat.template` and the `svg-graphics` skill now say an
+  HTML page is a ```html block, never a document, because there is no html format to store.
+  Tests: `tests/test_llamacpp_client.py`.
+
+- **A drawing pasted into the answer becomes a document.** Measured: a request for an
+  "svg-document" came back as a 13 000-character ```svg block, which chat renders as code with no
+  way to open it and which never reaches the library. Before the answer is saved, the first fenced
+  svg block is validated by `app/svg_safety.py` and stored through the same writer `write_document`
+  uses; the block is replaced by the sentence that names the file. A drawing that fails validation
+  stays text. The block is also **not streamed**: measured, the model narrated, streamed the whole
+  drawing as text and then called `write_document` anyway, so the user watched the markup for a
+  minute before the file appeared. The stream stops at the fence and says "Drawing the diagram…"
+  while the call finishes. Tests: `tests/test_write_document.py`, `tests/test_svg_answer.py`.
+
 - **A malformed tool call no longer breaks the conversation.** Measured on a 19 KB SVG: the
   arguments arrived with raw newlines inside the JSON string, the call was rejected — correctly —
   but the rejected call was also written into the transcript, and llama-server re-parses every
@@ -19,9 +44,10 @@
   one becomes "name (2)". Measured, the model then told the user the name it had asked for while
   the tool result carried the real one, so the result now says why the name changed and
   `chat.template` requires the exact name from a tool result. The document stages gained their
-  emoji (📄, 🎨, ✏️, ↩️), and a stage id the page does not know renders as "⚙️ Working…" instead of
-  the raw key — which is what a tab opened before an upgrade showed, because the stage map lives in
-  the browser. Tests: `tests/test_write_document.py`, `tests/test_tool_stages.py`.
+  emoji (📄, 🎨, ✏️, ↩️), and a stage id the page does not know no longer replaces the label it is
+  already showing with "⚙️ Working…" — measured, renaming a stage turned a correct label into the
+  generic one in every tab opened before the restart. Tests: `tests/test_write_document.py`,
+  `tests/test_tool_stages.py`.
 
 - **The READMEs describe the product again.** They had no scheduler, no network diagnostics, no
   assistant-written files, no document sharing and no panel-installed skills, and the TL;DR still

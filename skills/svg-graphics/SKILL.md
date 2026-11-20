@@ -20,6 +20,10 @@ Save the drawing as a document:
 write_document(name="Queue architecture", format="svg", content="<svg ...>...</svg>")
 ```
 
+The call carries plain JSON values: `name` is a file name and `format` is the bare word `svg`.
+Never put `<parameter>`, `<function=` or any other tag inside the call — a model that also prints
+the call as text mixes the two shapes, and the server refuses the value.
+
 The file appears in the user's document library and its card previews it as an image;
 CSS animations play there. Do not paste a wall of markup into the chat — describe the
 result and let the preview show it. SVG documents are not indexed: the markup is not

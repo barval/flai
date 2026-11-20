@@ -34,7 +34,12 @@ from .engine.loop import Turn, run_tool_loop
 from .engine.session import ChatSession
 from .events import get_events_publisher
 from .leaked_calls import LeakedCallFilter, parse_leaked_tool_calls
-from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
+from .llamacpp_client import (
+    _repetition_cutoff,
+    _strip_generic_reasoning,
+    _strip_thinking_tags,
+    strip_repetition_loop,
+)
 from .model_config import get_model_config
 from .model_status import answer_model_type
 from .tools import (
@@ -5858,6 +5863,7 @@ class RedisRequestQueue:
             error_detected = False
             stream_tool_calls: list[dict[str, Any]] | None = None
             leak_filter = LeakedCallFilter()
+            loop_check_at = 0
             for chunk in llamacpp.chat_stream(
                 messages,
                 model_type="multimodal",
@@ -5880,6 +5886,17 @@ class RedisRequestQueue:
                             session.on_token(visible)
                 if self._is_task_cancelled(task["id"]):
                     break
+                # The repetition guard used to be reasoning-only. Measured: a chat
+                # answer built an HTML scene with duplicated trees, walked its x
+                # coordinate to 9 300 and streamed until the token cap — the user
+                # watched it loop. Cutting the stream is what ends that.
+                if len(iteration_text) - loop_check_at >= 400:
+                    loop_check_at = len(iteration_text)
+                    cutoff = _repetition_cutoff(iteration_text)
+                    if cutoff is not None:
+                        self.logger.warning(f"Chat stream cut at a repetition loop ({cutoff} chars)")
+                        iteration_text = iteration_text[:cutoff].rstrip()
+                        break
                 if leak_filter.leaked:
                     # The model started printing the call as text — measured, a whole
                     # SVG inside an escaped parameter. The rest is noise the user must
@@ -5944,7 +5961,9 @@ class RedisRequestQueue:
                 round(time.time() - stream_start, 1),
                 lang,
             )
-        full_response = loop_result.text
+        full_response = strip_repetition_loop(loop_result.text)
+        if len(full_response) < len(loop_result.text):
+            self.logger.warning("Chat answer cut at a repetition loop after the stream")
         last_tool_result = loop_result.last_tool_result
         if not full_response.strip() and not last_tool_result.strip():
             self.logger.warning("Chat model returned empty response after reasoning strip")

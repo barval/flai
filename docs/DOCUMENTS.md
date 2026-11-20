@@ -113,6 +113,15 @@ SMIL animation are refused, and `url(...)` may only point at a local `#id`. The 
 served with a sandbox CSP, so a stored drawing is safe both in the panel and when opened
 on its own.
 
+A drawing that arrives as text is still a drawing: when the model writes the markup into the
+answer instead of calling the tool, the first fenced ```svg block is validated the same way and
+stored as a document, and the answer keeps the sentence that names the file in place of the block.
+The block is **not streamed** — the status changes to "Creating an SVG document…" and the markup
+never reaches the chat. A block that fails validation stays text.
+
+An HTML page is never a document: there is no `html` format, so a request for one is answered as
+a ```html block in the chat, which the ▶ button opens in the browser under a sandboxed CSP.
+
 Ask for it in plain language — "put a report together from these contracts and give it to
 me as a file", "save that as a table", "draw the queue as a diagram". The tool answers
 with the stored name and the size, and reminds you about the index switch; until it is

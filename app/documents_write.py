@@ -233,7 +233,7 @@ def write_document_file(
 ) -> WrittenDocument:
     """Store one document, or extend one this tool wrote. Refuses before writing."""
     # Measured: a model mixed the XML pseudo-call into the JSON values —
-    # name="Пеликан.svg</parameter><parameter=format>svg" — and the write
+    # name="scene.svg</parameter><parameter=format>svg" — and the write
     # happily produced "parameter>svg.md". That is not a document name.
     raw_name = str(name or "")
     raw_format = str(fmt or "")

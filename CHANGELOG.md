@@ -1,4 +1,4 @@
-## [v13.6] — 2026-11-19
+## [v13.6] — 2026-11-20
 
 ### Changed
 
@@ -24,7 +24,7 @@
   uses; the block is replaced by the sentence that names the file. A drawing that fails validation
   stays text. The block is also **not streamed**: measured, the model narrated, streamed the whole
   drawing as text and then called `write_document` anyway, so the user watched the markup for a
-  minute before the file appeared. The stream stops at the fence and says "Drawing the diagram…"
+  minute before the file appeared. The stream stops at the fence and says "Creating an SVG document…"
   while the call finishes. Tests: `tests/test_write_document.py`, `tests/test_svg_answer.py`.
 
 - **A malformed tool call no longer breaks the conversation.** Measured on a 19 KB SVG: the
@@ -35,7 +35,7 @@
   argument string are accepted (`json.loads(..., strict=False)`, which is the one deviation a
   drawing needs), and a call that still does not parse enters the transcript with `{}` so the
   model sees the rejection and can try again. A call that mixed the XML pseudo-call into its JSON
-  values — `name="Пеликан.svg</parameter><parameter=format>svg"`, which once produced a document
+  values — `name="scene.svg</parameter><parameter=format>svg"`, which once produced a document
   named `parameter>svg.md` — is refused as `argument_markup` instead of being written, and an
   absent format follows an `.svg` name. Tests: `tests/test_tool_argument_repair.py`,
   `tests/test_write_document.py`.
@@ -86,7 +86,7 @@
   model composed a `write_document` call: in the measured case an SVG cost 25 s of argument
   generation, and the tool itself then ran for 0.6 s, so a stage announced at execution time would
   have covered nothing. The stream now reports the tool as soon as its **name** arrives in the
-  first delta — "Writing the document…" — and switches to "Drawing the diagram…" once the format
+  first delta — "Writing the document…" — and switches to "Creating an SVG document…" once the format
   is known; `edit_document` and `restore_document_version` announce themselves the same way.
   Tests: `tests/test_tool_stages.py`.
 
@@ -173,6 +173,9 @@
   ```
   SELECT count(*) FROM scheduler_items WHERE repeat = 'weekly' AND weekday IS NOT NULL;
   ```
+
+  Checked on the installation this release was prepared on: the one weekly item still fires on its
+  day (`weekdays = {3}`), and the drop has run on every start since without error.
 
   The change exists because two columns held the same agreement and an edit could leave the second
   copy behind.

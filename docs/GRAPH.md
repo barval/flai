@@ -106,7 +106,10 @@ word by word, moving occurrences and edges onto the longer name.
 ## View
 
 The view is a mode of the chat main window, entered from 🕸️ on a document card (that document's
-neighbourhood) or from the panel header (the whole cloud).
+neighbourhood) or from the panel header (the whole cloud). The card's button appears only for an
+**indexed** document (or a `stale` one, whose graph was built before an edit): a file that was never
+indexed has no entities, and a generated SVG never is — the switch on its card has to be ticked
+first.
 
 - **Layers.** Entities and documents are two layers of one cloud. The single layer button names the
   action: while entities are shown it offers documents, and the other way round.

@@ -71,7 +71,7 @@ def test_an_existing_name_gets_a_suffix_and_nothing_is_overwritten(writer_env):
 
 
 def test_xml_markup_in_the_arguments_is_refused(writer_env):
-    """Measured: a model sent name="Пеликан.svg</parameter><parameter=format>svg"."""
+    """Measured: a model sent a name with a `<parameter>` tag glued into the value."""
     with pytest.raises(DocumentWriteError) as caught:
         write_document_file(LOGIN, "Пеликан на велосипеде.svg</parameter>", "<svg/>", fmt="")
 

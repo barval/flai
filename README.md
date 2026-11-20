@@ -88,6 +88,8 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
   bytes may be shared — so a fix is answered by a new document built from it. `write_document`
   also gained **SVG**: a diagram, chart or icon is stored as a document, validated before it is
   saved (no scripts, event handlers, external references or animation) and previewed as an image.
+  A drawing the model starts printing into the answer no longer arrives as a wall of markup — the
+  block is validated and stored the same way, and the answer names the file instead.
   → [DOCUMENTS.md](docs/DOCUMENTS.md)
 
 - **Skills: four bundled procedures, and an honest account of what the assistant can do.** Chat can

@@ -206,6 +206,12 @@ enable_env_features() {
         disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
         disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
     fi
+    if [[ "$WITH_MUSIC" == "true" ]]; then
+        set_env_key_value MUSIC_URL http://flai-music:8001
+        info "Генерация музыки включена (ACE-Step 1.5, flai-music)"
+    else
+        set_env_key_value MUSIC_URL ""
+    fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then
             set_env_key_value VIDEO_BACKEND wan
@@ -767,6 +773,7 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
     [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
+    [[ "$WITH_MUSIC" == "true" ]] && PROFILES="$PROFILES --profile with-music"
 
     # Платформа: --platform/--gpu-*, иначе FLAI_PLATFORM из окружения, иначе автоопределение.
     local platform="${FLAI_PLATFORM:-auto}"
@@ -979,6 +986,8 @@ FLAI v13.6 — Скрипт развёртывания
                       mtr, nmap, iperf3); инструменты выдаются пользователю в панели
   --with-search       Развернуть SearXNG для веб-поиска (по умолчанию: выключено)
   --with-crawler      Развернуть Crawl4AI для глубокого чтения сайтов (по умолчанию: выключено)
+  --with-music        Развернуть генерацию музыки ACE-Step 1.5 (песни по тексту)
+                      (контейнер flai-music; ~11 ГБ весов при первом запуске)
   --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: выключено, используйте флаг для включения)
   --cpu               Принудительный режим только CPU (GPU не требуется)
@@ -1024,6 +1033,7 @@ VOICE_KOKORO=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_MUSIC=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
@@ -1044,6 +1054,7 @@ for arg in "$@"; do
         --with-image-gen)                WITH_IMAGE_GEN=true ;;
         --with-video)                    WITH_VIDEO=true; VIDEO_USE_LTX=true ;;
         --with-video-wan)                WITH_VIDEO=true; VIDEO_USE_WAN=true ;;
+        --with-music)                    WITH_MUSIC=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;

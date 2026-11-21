@@ -27,6 +27,7 @@ The README is a short overview plus quick start. Every topic below has a dedicat
 | RAG quality measurement (hit@k, MRR, nDCG, latency) | `docs/RAG_EVAL.md` | When changing retrieval, chunking, or adding hybrid search / reranking |
 | Knowledge graph: extraction, storage, retrieval stage, view, measured defaults | `docs/GRAPH.md` | When touching `app/graph_*.py`, the graph stage in `modules/rag.py`, or `chat-graph.js` |
 | Documents, RAG setup, PDF OCR | `docs/DOCUMENTS.md` | When touching `modules/rag.py` or document uploads |
+| Music generation (ACE-Step 1.5 sidecar, `--profile with-music`) | `docs/MUSIC.md` | When touching `modules/music.py`, `services/music/`, or `MUSIC_*` |
 | Users, backups, Model Hub, branding | `docs/ADMINISTRATION.md` | When touching `app/routes/admin.py`, Model Hub, backups |
 | Health endpoint, Prometheus metrics | `docs/MONITORING.md` | When touching `/health`, `flai_web_info`, monitoring UI |
 | Public OpenAI-compatible API, `/v1` endpoints, keys, errors | `docs/API.md` | When changing `/v1/*`, `app/api_bridge.py`, or the API key UI |

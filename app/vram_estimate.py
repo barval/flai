@@ -588,3 +588,18 @@ def wan_video_vram_mb(
     )
     base = WAN_VIDEO_VRAM_BASE_MB - (WAN_VIDEO_TEXT_ENCODER_MB if encoder_out_of_vram else 0)
     return int(base + latents * WAN_VIDEO_VRAM_MB_PER_LATENT_UNIT)
+
+
+# Measured on the reference 16 GB card (nvidia-smi every 200 ms, 2026-11-21):
+# ACE-Step 1.5 2B turbo + 0.6B LM idles at ~5 500 MB and peaks at 6 887 MB for a
+# 30 s song (6 851 MB at 30 s, 6 867 MB at 40 s, 6 861 MB at 60 s — the fixed
+# part dominates). The delta above the 30 s song is ~30 MB per 10 s of audio.
+MUSIC_VRAM_BASE_MB = 6_900
+MUSIC_VRAM_MB_PER_10S = 30
+MUSIC_VRAM_CAP_MB = 8_000
+
+
+def music_vram_mb(duration_s: int = 30) -> int:
+    """Estimated peak VRAM (MB) for one ACE-Step 1.5 song of the given length."""
+    extra = max(0, int(duration_s) - 30) // 10 * MUSIC_VRAM_MB_PER_10S
+    return min(MUSIC_VRAM_CAP_MB, MUSIC_VRAM_BASE_MB + extra)

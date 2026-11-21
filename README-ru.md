@@ -63,6 +63,7 @@
 | Интеграция с камерами | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
 | Долговременная память (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
 | Документы, RAG, OCR PDF, создание и правка | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| Генерация музыки (сайдкар ACE-Step 1.5) | [MUSIC.md](docs/MUSIC.md) | [MUSIC-ru.md](docs/MUSIC-ru.md) |
 | Сущности, связи, просмотр графа знаний | [GRAPH.md](docs/GRAPH.md) | [GRAPH-ru.md](docs/GRAPH-ru.md) |
 | Навыки: формат, установка, allowed-tools | [SKILLS.md](docs/SKILLS.md) | [SKILLS-ru.md](docs/SKILLS-ru.md) |
 | Измерение качества RAG (hit@k, MRR, nDCG, задержка) | [RAG_EVAL.md](docs/RAG_EVAL.md) | [RAG_EVAL-ru.md](docs/RAG_EVAL-ru.md) |

@@ -138,6 +138,16 @@ def load_config(app):
     # Wan on a CPU-only host is ~90 minutes for a 5-second clip and needs more
     # RAM than the probe container had — refused by default, opt-in only.
     app.config["WAN_VIDEO_ALLOW_CPU"] = os.getenv("WAN_VIDEO_ALLOW_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+
+    # Music generation (ACE-Step 1.5 sidecar, MIT). Off unless a URL is set,
+    # because the container ships under its own profile `with-music`.
+    app.config["MUSIC_URL"] = os.getenv("MUSIC_URL", "").strip()
+    app.config["MUSIC_ENABLED"] = bool(app.config["MUSIC_URL"])
+    app.config["MUSIC_TIMEOUT_S"] = int(os.getenv("MUSIC_TIMEOUT_S", 900))
+    app.config["MUSIC_MODEL"] = os.getenv("MUSIC_MODEL", "acestep-v15-turbo")
+    app.config["MUSIC_LM_MODEL"] = os.getenv("MUSIC_LM_MODEL", "acestep-5Hz-lm-0.6B")
+    app.config["MUSIC_DEFAULT_DURATION_S"] = int(os.getenv("MUSIC_DEFAULT_DURATION_S", 30))
+    app.config["MUSIC_MAX_DURATION_S"] = int(os.getenv("MUSIC_MAX_DURATION_S", 600))
     app.config["WAN_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("WAN_VIDEO_CPU_TIME_BUDGET_S", "0"))
 
     # VRAM and RAM policy. These used to be read with ``os.getenv`` from deep

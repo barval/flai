@@ -29,6 +29,7 @@ documents/
 
 # Services models
 services/llamacpp/models/
+services/music/models/
 services/piper/models/
 services/piper/piper_models/
 services/sd_cpp/models/

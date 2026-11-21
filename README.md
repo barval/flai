@@ -63,6 +63,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Camera integration | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
 | Long-term memory (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
 | Documents, RAG, PDF OCR, writing and editing | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| Music generation (ACE-Step 1.5 sidecar) | [MUSIC.md](docs/MUSIC.md) | [MUSIC-ru.md](docs/MUSIC-ru.md) |
 | Entities, relations, the knowledge-graph view | [GRAPH.md](docs/GRAPH.md) | [GRAPH-ru.md](docs/GRAPH-ru.md) |
 | Skills: format, installation, allowed-tools | [SKILLS.md](docs/SKILLS.md) | [SKILLS-ru.md](docs/SKILLS-ru.md) |
 | RAG quality measurement (hit@k, MRR, nDCG, latency) | [RAG_EVAL.md](docs/RAG_EVAL.md) | [RAG_EVAL-ru.md](docs/RAG_EVAL-ru.md) |

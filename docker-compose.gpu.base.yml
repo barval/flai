@@ -237,6 +237,48 @@ services:
         max-file: "3"
 
   # ============================================================
+  # ACE-STEP 1.5 (Optional - Music Generation)
+  # ============================================================
+  music:
+    image: flai-music:cuda
+    build:
+      context: ./services/music
+      dockerfile: Dockerfile
+    container_name: flai-music
+    volumes:
+      - ./services/music/models:/app/checkpoints:rw
+    environment:
+      - ACESTEP_CHECKPOINTS_DIR=/app/checkpoints
+      - ACESTEP_CONFIG_PATH=acestep-v15-turbo
+      - ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B
+      - ACESTEP_LM_BACKEND=pt
+      - ACESTEP_DEVICE=cuda
+      - ACESTEP_QUEUE_WORKERS=1
+      - HF_HOME=/app/checkpoints/.hf
+      - ACESTEP_API_HOST=0.0.0.0
+      - PORT=8001
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+    profiles:
+      - with-music
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:

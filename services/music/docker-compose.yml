@@ -1,0 +1,55 @@
+# ACE-Step 1.5 as a standalone sidecar (same shape as room-snapshot-api).
+# Start it with:  docker compose -f services/music/docker-compose.yml up -d
+# and point FLAI at it with MUSIC_URL=http://flai-music:8001.
+#
+# Models are a volume, not part of the image: the first start downloads ~11 GB.
+# The 2B turbo pair fits a 16 GB card (measured peak 6.9 GB); XL needs 19 GB of
+# weights and at least 12 GB of VRAM with offload.
+
+services:
+  music:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ACESTEP_COMMIT: ${ACESTEP_COMMIT:-main}
+    image: flai-music:cuda
+    container_name: flai-music
+    volumes:
+      - ./models:/app/checkpoints:rw
+    environment:
+      - ACESTEP_CHECKPOINTS_DIR=/app/checkpoints
+      - ACESTEP_CONFIG_PATH=${MUSIC_MODEL:-acestep-v15-turbo}
+      - ACESTEP_LM_MODEL_PATH=${MUSIC_LM_MODEL:-acestep-5Hz-lm-0.6B}
+      - ACESTEP_LM_BACKEND=pt
+      - ACESTEP_DEVICE=cuda
+      - ACESTEP_QUEUE_WORKERS=1
+      - HF_HOME=/app/checkpoints/.hf
+      - ACESTEP_API_HOST=0.0.0.0
+      - PORT=8001
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  flai_network:
+    external: true
+    name: flai_network

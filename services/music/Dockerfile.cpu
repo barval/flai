@@ -1,0 +1,53 @@
+# ACE-Step 1.5 music sidecar for CPU-only hosts.
+#
+# Same code and weights as Dockerfile, without CUDA: torch comes from the CPU
+# wheel index. Measured on a 12-core host: model init 77 s, a 10 s song 80 s
+# (~8x real time), ~15 GB of RAM. A 30 s song is ~4 minutes.
+#
+# Enable deliberately: the container is heavier than the rest of the CPU stack
+# and will compete with the main model for RAM.
+
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    ACESTEP_CHECKPOINTS_DIR=/app/checkpoints \
+    ACESTEP_CONFIG_PATH=acestep-v15-turbo \
+    ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B \
+    ACESTEP_LM_BACKEND=pt \
+    ACESTEP_DEVICE=cpu \
+    ACESTEP_QUEUE_WORKERS=1 \
+    ACESTEP_API_HOST=0.0.0.0 \
+    HF_HOME=/app/checkpoints/.hf \
+    PATH="/app/.venv/bin:$PATH" \
+    PORT=8001
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl ffmpeg git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG ACESTEP_COMMIT=main
+RUN --mount=type=cache,target=/root/.cache/uv \
+    pip install --no-cache-dir uv \
+    && git clone https://github.com/ace-step/ACE-Step-1.5.git /app \
+    && cd /app \
+    && git checkout "${ACESTEP_COMMIT}" \
+    && uv sync --python 3.12 --no-dev \
+        --no-install-package torch \
+        --no-install-package torchvision \
+        --no-install-package torchaudio \
+    && uv pip install --python /app/.venv/bin/python \
+        torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
+        --index-url https://download.pytorch.org/whl/cpu
+
+WORKDIR /app
+EXPOSE 8001
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+    CMD curl -fsS http://localhost:8001/health || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

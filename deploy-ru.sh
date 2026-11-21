@@ -827,6 +827,12 @@ resolve_stack() {
         error "На CPU используйте --with-video (LTX-Video) или WAN_VIDEO_ALLOW_CPU=1 в .env, чтобы попробовать всё равно."
         exit 1
     fi
+
+    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        error "Музыка на CPU-хосте идёт ~4 минуты на 30-секундную песню и занимает ~15 ГБ RAM."
+        error "Это конкурирует с основной моделью, поэтому только осознанно: MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
+        exit 1
+    fi
 }
 
 # ── Подсказки по запуску (показываются ДО сборки) ──

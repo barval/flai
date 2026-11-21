@@ -844,6 +844,12 @@ resolve_stack() {
         error "Use --with-video (LTX-Video) on CPU hosts, or WAN_VIDEO_ALLOW_CPU=1 in .env to attempt it anyway."
         exit 1
     fi
+
+    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        error "Music on a CPU host takes ~4 minutes per 30-second song and ~15 GB of RAM."
+        error "That competes with the main model, so it is opt-in: MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
+        exit 1
+    fi
 }
 
 # ── Start hints (printed BEFORE the build) ──

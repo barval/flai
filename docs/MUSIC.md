@@ -12,6 +12,21 @@ speaks its REST API.
 | Enable | `./deploy.sh --with-music`, or `--profile with-music` manually |
 | Settings | `MUSIC_URL` (empty disables the module), `MUSIC_TIMEOUT_S`, `MUSIC_MODEL`, `MUSIC_LM_MODEL`, `MUSIC_DEFAULT_DURATION_S`, `MUSIC_MAX_DURATION_S` |
 
+## Requirements
+
+| | GPU host | CPU-only host |
+|---|---|---|
+| VRAM | 8 GB minimum (6.9 GB measured peak), 16 GB comfortable | — |
+| RAM | ~6 GB (offloaded weights) | **15 GB** measured |
+| Disk | image 20.8 GB + weights 11 GB | image 11.8 GB + weights 11 GB |
+| Image | `flai-music:cuda` (`services/music/Dockerfile`) | `flai-music:cpu` (`Dockerfile.cpu`, CPU torch wheel) |
+| Speed, 30 s song | 10–12 s | ~4 min (~8x real time) |
+| Enable | `./deploy.sh --with-music` | `MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music` |
+
+The 8–12 GB tiers run the 2B pair after the chat model is evicted from the card; the music
+container releases VRAM when the song is done, so chat reloads on its next message. The XL 4B
+tier needs ≥12 GB with offload and 19 GB of weights — it is not part of the default install.
+
 ## What it costs
 
 Measured on an RTX 5060 Ti (16 GB) with `nvidia-smi` sampled every 200 ms:
@@ -41,6 +56,28 @@ Two rules come from measurement, not from taste:
 
 The client adds structure tags when the text has none and refuses a duration above
 `MUSIC_MAX_DURATION_S` instead of silently clamping it.
+
+## CPU-only hosts
+
+The model runs on CPU, as upstream documents, but it is heavy and slow — measured on a
+12-core host with the CUDA-free image:
+
+| Measurement | Value |
+|---|---|
+| Model init | 77 s |
+| 10 s song | 80 s (~8x real time) |
+| 30 s song (extrapolated) | ~4 min |
+| Container RAM | 15 GB |
+
+That competes with the main model on a 16 GB host, so CPU is **opt-in**:
+
+```bash
+MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music
+```
+
+Without the variable the deploy script refuses with the numbers above. The CPU stack
+builds `flai-music:cpu` from `services/music/Dockerfile.cpu` (CPU torch wheel, no CUDA),
+and the compose file has no GPU reservation.
 
 ## Quality is stochastic
 

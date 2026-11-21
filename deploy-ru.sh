@@ -829,7 +829,7 @@ resolve_stack() {
     fi
 
     if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
-        error "Музыка на CPU-хосте идёт ~4 минуты на 30-секундную песню и занимает ~15 ГБ RAM."
+        error "Музыка на CPU-хосте идёт 4–5 минут на 30-секундную песню и занимает ~15 ГБ RAM."
         error "Это конкурирует с основной моделью, поэтому только осознанно: MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
         exit 1
     fi

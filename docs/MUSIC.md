@@ -20,7 +20,7 @@ speaks its REST API.
 | RAM | ~6 GB (offloaded weights) | **15 GB** measured |
 | Disk | image 20.8 GB + weights 11 GB | image 11.8 GB + weights 11 GB |
 | Image | `flai-music:cuda` (`services/music/Dockerfile`) | `flai-music:cpu` (`Dockerfile.cpu`, CPU torch wheel) |
-| Speed, 30 s song | 10–12 s | ~4 min (~8x real time) |
+| Speed, 30 s song | 10–12 s | 4–5 min (~8x real time) |
 | Enable | `./deploy.sh --with-music` | `MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music` |
 
 The 8–12 GB tiers run the 2B pair after the chat model is evicted from the card; the music
@@ -64,9 +64,9 @@ The model runs on CPU, as upstream documents, but it is heavy and slow — measu
 
 | Measurement | Value |
 |---|---|
-| Model init | 77 s |
-| 10 s song | 80 s (~8x real time) |
-| 30 s song (extrapolated) | ~4 min |
+| Model init | 74–77 s |
+| 10 s song | 80–90 s (~8x real time) |
+| 30 s song (extrapolated) | 4–5 min |
 | Container RAM | 15 GB |
 
 That competes with the main model on a 16 GB host, so CPU is **opt-in**:

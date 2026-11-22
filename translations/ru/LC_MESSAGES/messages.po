@@ -6520,3 +6520,20 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ msgid "🎨 Drawing the diagram..."
 #~ msgstr "🎨 Рисую схему..."
 
+msgid "Music generation module unavailable"
+msgstr "Модуль генерации музыки недоступен"
+
+msgid "Music generation failed"
+msgstr "Не удалось создать музыку"
+
+msgid "Music generated from request: {query}"
+msgstr "Музыка создана по запросу: {query}"
+
+msgid "Music needs the lyrics to sing"
+msgstr "Для песни нужен текст"
+
+msgid "A song lasts from 10 to 600 seconds"
+msgstr "Песня длится от 10 до 600 секунд"
+
+msgid "Music is being created and will arrive as a separate message"
+msgstr "Музыка создаётся и придёт отдельным сообщением"

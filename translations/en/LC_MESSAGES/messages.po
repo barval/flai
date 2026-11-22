@@ -6464,3 +6464,20 @@ msgstr "Could not connect to video generation service"
 #~ msgid "🎨 Drawing the diagram..."
 #~ msgstr "🎨 Drawing the diagram..."
 
+msgid "Music generation module unavailable"
+msgstr "Music generation module unavailable"
+
+msgid "Music generation failed"
+msgstr "Music generation failed"
+
+msgid "Music generated from request: {query}"
+msgstr "Music generated from request: {query}"
+
+msgid "Music needs the lyrics to sing"
+msgstr "Music needs the lyrics to sing"
+
+msgid "A song lasts from 10 to 600 seconds"
+msgstr "A song lasts from 10 to 600 seconds"
+
+msgid "Music is being created and will arrive as a separate message"
+msgstr "Music is being created and will arrive as a separate message"

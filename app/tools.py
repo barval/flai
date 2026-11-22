@@ -172,6 +172,36 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "generate_music",
+            "description": (
+                "Create a sung song from lyrics. Use when the person asks for a song, a track, "
+                "or to sing given words. The lyrics must be the words to sing; add structure "
+                "tags [verse]/[chorus] when you write them. Duration fits the lyric length: "
+                "about 3-5 seconds per line (6 lines ~ 30 s)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Style and arrangement, e.g. 'russian pop ballad, warm female vocal, acoustic guitar'",
+                    },
+                    "lyrics": {
+                        "type": "string",
+                        "description": "The words to sing, with [verse]/[chorus] structure tags",
+                    },
+                    "duration_s": {
+                        "type": "integer",
+                        "description": "Song length in seconds, 10-600. Match it to the lyrics: 3-5 s per line.",
+                    },
+                },
+                "required": ["prompt", "lyrics"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the internet for up-to-date information: news, weather, exchange rates, prices, latest events, releases, statistics. Use when the user needs fresh information that is not in their documents.",
             "parameters": {
@@ -1649,9 +1679,54 @@ def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
     return _exec_schedule(ctx, "action", **kw)
 
 
+def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
+    """Queue a song and answer with a sentence the model can repeat."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    language = str(ctx.get("lang") or "ru")
+    app = ctx.get("app") or current_app
+    module = (getattr(app, "modules", {}) or {}).get("music")
+    if module is None:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music generation module unavailable"))
+    login = str(ctx.get("user_id") or "")
+    session_id = str(ctx.get("current_session_id") or "")
+    if not login or not session_id:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music generation module unavailable"))
+
+    prompt = str(kw.get("prompt") or "").strip() or "pop song"
+    lyrics = str(kw.get("lyrics") or "").strip()
+    if not lyrics:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music needs the lyrics to sing"))
+    try:
+        duration = int(kw.get("duration_s") or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    duration = duration or module.default_duration_s
+    if duration < 10 or duration > module.max_duration_s:
+        with force_locale(language):
+            return "⚠️ " + str(_("A song lasts from 10 to 600 seconds"))
+
+    app.request_queue.add_request(
+        login,
+        session_id,
+        {"type": "music_gen", "text": prompt, "lyrics": lyrics, "duration": duration,
+         "preview": (prompt[:50] + "...") if prompt else "Music"},
+        int(ctx.get("user_class") or 2),
+        language,
+        task_type="music_gen",
+    )
+    with force_locale(language):
+        return str(_("Music is being created and will arrive as a separate message"))
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
+    "generate_music": lambda ctx, **kw: _exec_generate_music(ctx, **kw),
     "web_search": lambda ctx, **kw: _exec_web_search(ctx, kw.get("query", ""), kw.get("lang", "ru")),
     "read_page": lambda ctx, **kw: _exec_read_page(ctx, kw.get("url", "")),
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),

@@ -779,6 +779,9 @@ class RedisRequestQueue:
         # Video tasks are slow
         if req_type == "video":
             return "slow"
+        # A song is one GPU task, like a video clip.
+        if req_type == "music_gen":
+            return "slow"
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
             return "fast"
@@ -3406,6 +3409,97 @@ class RedisRequestQueue:
             response_style,
             task=task,
             generation_options=request_data,
+        )
+
+    def _process_music_request(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a music task from the slow queue."""
+        data = task.get("data", {})
+        return self._process_music_gen_task(
+            data.get("text", ""),
+            data.get("lyrics", ""),
+            int(data.get("duration") or 0),
+            task["session_id"],
+            task["user_id"],
+            task.get("lang", "ru"),
+            data.get("response_style", "neutral"),
+            task=task,
+        )
+
+    def _process_music_gen_task(
+        self,
+        query: str,
+        lyrics: str,
+        duration: int,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Render one song with the ACE-Step sidecar and answer with the file."""
+        from pathlib import Path
+
+        from modules.music import MusicError
+
+        base = self.app.modules["base"]
+        module = self.app.modules.get("music")
+        if module is None:
+            return self._build_error_response(
+                session_id, base._("Music generation module unavailable", lang=lang), 0, lang
+            )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+        from app.vram_estimate import music_vram_mb
+
+        self._unload_llamacpp_models()
+        from app.resource_manager import get_resource_manager
+
+        needed = music_vram_mb(duration or module.default_duration_s)
+        if not get_resource_manager().ensure_vram_for("music", needed_mb=needed, timeout=180):
+            return self._build_error_response(
+                session_id, base._("GPU memory unavailable. Try again in a moment.", lang=lang), 0, lang
+            )
+
+        started = time.time()
+        try:
+            result = module.generate(
+                query,
+                lyrics,
+                duration_s=duration or None,
+                language="en" if lang == "en" else "ru",
+                out_dir=Path(self.app.config["UPLOAD_FOLDER"]) / "music" / str(user_id),
+            )
+        except MusicError:
+            return self._build_error_response(
+                session_id, base._("Music generation failed", lang=lang), time.time() - started, lang
+            )
+
+        file_path = os.path.relpath(result["path"], self.app.config["UPLOAD_FOLDER"])
+        file_name = os.path.basename(result["path"])
+        elapsed = round(time.time() - started, 1)
+        template = base._("Music generated from request: {query}", lang=lang)
+        prefix = "🎵 " + template.replace("{query}", "")
+        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+        return self._save_and_respond(
+            session_id,
+            message_text,
+            result.get("model") or "music",
+            {"gen_time": elapsed},
+            file_data=None,
+            file_type="audio/wav",
+            file_name=file_name,
+            file_path=file_path,
+            extra={
+                "task_id": task.get("id") if task else None,
+                "file_path": file_path,
+                "file_name": file_name,
+                "file_size": result.get("bytes"),
+                "file_type": "audio/wav",
+                "gen_model": result.get("model"),
+                "seed": result.get("seed"),
+                "model_type": "music",
+            },
+            response_style=response_style,
         )
 
     def _process_video_gen_task(
@@ -6724,6 +6818,8 @@ class RedisRequestQueue:
             return self._process_video_request(task)
         if task_type == "image_gen":
             return self._process_image_gen_request(task)
+        if task_type == "music_gen":
+            return self._process_music_request(task)
         if task_type == "reasoning_task":
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":

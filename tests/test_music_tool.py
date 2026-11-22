@@ -1,0 +1,68 @@
+"""The chat tool enqueues a music task; it never renders inside the turn."""
+
+from app.tools import _exec_generate_music
+
+
+class _Module:
+    default_duration_s = 30
+    max_duration_s = 600
+
+
+class _Queue:
+    def __init__(self):
+        self.calls = []
+
+    def add_request(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+
+
+class _App:
+    def __init__(self):
+        self.modules = {"music": _Module()}
+        self.request_queue = _Queue()
+
+
+def _ctx(app):
+    return {
+        "app": app,
+        "user_id": "alice",
+        "current_session_id": "s-1",
+        "user_class": 2,
+        "lang": "ru",
+    }
+
+
+def test_a_song_is_queued_not_rendered():
+    app = _App()
+    answer = _exec_generate_music(
+        _ctx(app), prompt="pop ballad", lyrics="[verse]\nline one\n[chorus]\nline two", duration_s=30
+    )
+    assert "⚠️" not in answer
+    assert app.request_queue.calls, "the tool must enqueue a task"
+    args, kwargs = app.request_queue.calls[0]
+    request_data = args[2]
+    assert request_data["type"] == "music_gen"
+    assert request_data["duration"] == 30
+    assert request_data["lyrics"].startswith("[verse]")
+    assert kwargs.get("task_type") == "music_gen"
+
+
+def test_missing_lyrics_is_refused():
+    app = _App()
+    answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="   ")
+    assert answer.startswith("⚠️")
+    assert not app.request_queue.calls
+
+
+def test_duration_outside_the_range_is_refused():
+    app = _App()
+    answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="one\ntwo", duration_s=5)
+    assert answer.startswith("⚠️")
+    assert not app.request_queue.calls
+
+
+def test_missing_module_is_refused():
+    app = _App()
+    app.modules = {}
+    answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="one\ntwo")
+    assert answer.startswith("⚠️")

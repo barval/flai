@@ -18,6 +18,13 @@ services:
     container_name: flai-web
     ports:
       - "5000:5000"
+    # The worker keeps long-lived SSE and queue connections; the image's soft
+    # limit of 1024 was exhausted after ~14 h (Errno 24) and every health check
+    # then failed. The leak is not fixed, the headroom is.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     depends_on:
       - redis
       - postgres
@@ -257,6 +264,11 @@ services:
       - HF_HOME=/app/checkpoints/.hf
       - ACESTEP_API_HOST=0.0.0.0
       - PORT=8001
+    # `deploy.resources.reservations.devices` is ignored by `docker compose up`
+    # without --compatibility; `gpus` is honoured. Measured: without it the
+    # container ran the model on CPU (torch.cuda.is_available() False) and a song
+    # took 168 s instead of 12 s.
+    gpus: all
     networks:
       - flai_network
     restart: unless-stopped

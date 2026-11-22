@@ -20,8 +20,11 @@ speaks its REST API.
 | RAM | ~6 GB (offloaded weights) | **15 GB** measured |
 | Disk | image 20.8 GB + weights 11 GB | image 11.8 GB + weights 11 GB |
 | Image | `flai-music:cuda` (`services/music/Dockerfile`) | `flai-music:cpu` (`Dockerfile.cpu`, CPU torch wheel) |
-| Speed, 30 s song | 10–12 s | 4–5 min (~8x real time) |
+| Speed, 30 s song | 12–15 s | 4–5 min (~8x real time) |
 | Enable | `./deploy.sh --with-music` | `MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music` |
+
+AMD and Intel hosts have no CUDA image: they run the CPU stack, where music is the opt-in
+CPU path described below. That combination is not measured.
 
 The 8–12 GB tiers run the 2B pair after the chat model is evicted from the card; the music
 container releases VRAM when the song is done, so chat reloads on its next message. The XL 4B
@@ -35,7 +38,7 @@ Measured on an RTX 5060 Ti (16 GB) with `nvidia-smi` sampled every 200 ms:
 |---|---|
 | Idle after load | 5.5 GB |
 | Peak, 30 s song | 6.9 GB |
-| 30 s song, wall clock | 10–12 s |
+| 30 s song, wall clock | 12–15 s |
 | 45 s song | 14–17 s |
 | Model load | ~21 s (in-process); the first song after the container starts takes ~170 s because the tokenizer and the LM initialise too |
 
@@ -78,6 +81,14 @@ MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music
 Without the variable the deploy script refuses with the numbers above. The CPU stack
 builds `flai-music:cpu` from `services/music/Dockerfile.cpu` (CPU torch wheel, no CUDA),
 and the compose file has no GPU reservation.
+
+
+### XL 4B on a 16 GB card
+
+Measured: init 38.5 s, then **CUDA OOM** during generation — the card peaked at 15 794 MB
+and the task failed. The XL tier needs 24 GB, or explicit offload plus INT8 quantisation,
+which turns it into a CPU-bound run (a 20 s song took 144 s on CPU earlier). The default
+install ships the 2B pair for this reason.
 
 ## Quality is stochastic
 

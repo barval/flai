@@ -11,6 +11,13 @@ services:
     container_name: flai-web
     ports:
       - "5000:5000"
+    # The worker keeps long-lived SSE and queue connections; the image's soft
+    # limit of 1024 was exhausted after ~14 h (Errno 24) and every health check
+    # then failed. The leak is not fixed, the headroom is.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     depends_on:
       - redis
       - postgres

@@ -9,7 +9,7 @@ not enter the web image.
 - **Size:** the image is ~9 GB; models are a volume (`./models`, ~11 GB for the 2B
   turbo pair), downloaded on the first start.
 - **Measured** on an RTX 5060 Ti (16 GB): idle 5.5 GB, peak 6.9 GB; a 30 s Russian
-  song takes 10–12 s with the 2B turbo DiT and the 0.6B LM.
+  song takes 12–15 s with the 2B turbo DiT and the 0.6B LM.
 
 ## Run
 

@@ -349,7 +349,7 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 | **SuperLocalMemory** (`with-slm`) | ~0.5 GB (planner budget 2 GB) | — | CPU embeddings |
 | **Network diagnostics** (`with-net-tools`) | **~11 MiB** | — | the sidecar measured idle; no published port, no route to PostgreSQL or Redis |
 | **Reranker** (optional, off by default) | ~0.9 GB | — | `bge-reranker-v2-m3`, `cpu_only` group, never takes a GPU slot |
-| **Music** (`with-music`) | GPU: ~6 GB resident (offloaded weights) / CPU: **15 GB** | **6.9 GB peak** (5.5 GB idle) | ACE-Step 1.5 2B turbo + 0.6B LM; 30 s Russian song in 10–12 s on a 16 GB card, 4–5 min on CPU (~8x real time). Image 20.8 GB (GPU) or 11.8 GB (CPU), weights 11 GB |
+| **Music** (`with-music`) | GPU: ~6 GB resident (offloaded weights) / CPU: **15 GB** | **6.9 GB peak** (5.5 GB idle) | ACE-Step 1.5 2B turbo + 0.6B LM; 30 s Russian song in 12–15 s on a 16 GB card, 4–5 min on CPU (~8x real time). Image 20.8 GB (GPU) or 11.8 GB (CPU), weights 11 GB |
 
 The TTS profiles are mutually exclusive (Piper is the default, Kokoro the quality option), and so
 are the video profiles (LTX is the default, Wan the quality option). Both TTS backends run on the
@@ -372,7 +372,7 @@ measured ~98 s for a single 256×192 second and needs more than 12 GB of RAM at 
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
 | Video — LTX (up to 10 s) | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
 | Video — Wan (5 s) | ⚠️ 512×288×121, encoder offloaded | ✅ 832×480×121, encoder offloaded | ✅ 832×480×121 (209 s) | ❌ refused (needs a GPU) |
-| Music — songs from lyrics | ⚠️ 2B turbo fits, but the chat model must be evicted | ✅ 2B turbo (6.9 GB peak) | ✅ 2B turbo (10–12 s per 30 s song) | ⚠️ opt-in `MUSIC_ALLOW_CPU=1`, ~4 min per song and 15 GB RAM |
+| Music — songs from lyrics | ⚠️ 2B turbo fits, but the chat model must be evicted | ✅ 2B turbo (6.9 GB peak) | ✅ 2B turbo (12–15 s per 30 s song) | ⚠️ opt-in `MUSIC_ALLOW_CPU=1`, ~4 min per song and 15 GB RAM |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |

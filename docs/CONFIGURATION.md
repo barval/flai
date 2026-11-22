@@ -240,8 +240,8 @@ database. The precedence is **database > `.env` > built-in default**: a value sa
 the environment, and the ↺ button next to a field drops the override so the `.env` value applies again.
 
 - A saved value takes effect immediately, without a restart.
-- Values are grouped (Search and crawl, Documents and RAG, Tasks, Models and context, Media generation,
-  Deep analysis, Voice, Memory and history, API, Cameras, Service, Debug) and the search box filters by
+- Values are grouped (Search and crawl, Documents and RAG, Tasks, Music generation, Models and context,
+  Media generation, Deep analysis, Voice, Memory and history, API, Cameras, Service, Debug) and the search box filters by
   name or environment key.
 - **MCP has its own tab**, not a group in the settings list: it holds the enable switch, the request
   timeout and a server table (name, URL, token, allowed tools) with a per-row **Test** that enumerates

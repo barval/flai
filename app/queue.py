@@ -3488,6 +3488,9 @@ class RedisRequestQueue:
 
         file_path = os.path.relpath(result["path"], self.app.config["UPLOAD_FOLDER"])
         file_name = os.path.basename(result["path"])
+        import mimetypes as _mimetypes
+
+        music_type = _mimetypes.guess_type(file_name)[0] or "audio/wav"
         elapsed = round(time.time() - started, 1)
         template = base._("Music generated from request: {query}", lang=lang)
         prefix = "🎵 " + template.replace("{query}", "")
@@ -3503,7 +3506,7 @@ class RedisRequestQueue:
             result.get("model") or "music",
             {"gen_time": elapsed},
             file_data=None,
-            file_type="audio/wav",
+            file_type=music_type,
             file_name=file_name,
             file_path=file_path,
             extra={
@@ -3511,7 +3514,7 @@ class RedisRequestQueue:
                 "file_path": file_path,
                 "file_name": file_name,
                 "file_size": result.get("bytes"),
-                "file_type": "audio/wav",
+                "file_type": music_type,
                 "gen_model": result.get("model"),
                 "seed": result.get("seed"),
                 "model_type": "music",

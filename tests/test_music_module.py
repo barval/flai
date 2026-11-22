@@ -141,3 +141,13 @@ def test_duration_grows_with_the_lyric():
     twelve = "\n".join(f"line {i}" for i in range(12))
     assert fit_duration(six, 30) >= 30
     assert fit_duration(twelve, 30) > fit_duration(six, 30)
+
+
+def test_audio_format_defaults_to_wav_and_accepts_mp3(monkeypatch):
+    module = MusicModule()
+    monkeypatch.delenv("MUSIC_FORMAT", raising=False)
+    assert module.audio_format == "wav"
+    monkeypatch.setenv("MUSIC_FORMAT", "MP3")
+    assert module.audio_format == "mp3"
+    monkeypatch.setenv("MUSIC_FORMAT", "exe")
+    assert module.audio_format == "wav"

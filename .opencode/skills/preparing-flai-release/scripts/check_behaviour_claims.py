@@ -109,6 +109,77 @@ CLAIMS: tuple[Claim, ...] = (
     ),
 )
 
+@dataclass(frozen=True)
+class DocClaim:
+    """A shipped feature may not contradict another document.
+
+    These are not doc-vs-code claims: the feature is in the code and in the
+    README, and the failure is another page that still describes it as planned,
+    or the same figure written two ways. v13.6 shipped music while ROADMAP.md
+    still planned it, and MUSIC.md called the same image "~9 GB" and "20.8 GB".
+    """
+
+    id: str
+    anchor_doc: str
+    anchor_pattern: str
+    forbidden_doc: str
+    forbidden_pattern: str
+
+
+DOC_CLAIMS: tuple[DocClaim, ...] = (
+    DocClaim(
+        "music-not-planned",
+        "README.md",
+        r"writes songs",
+        "docs/ROADMAP.md",
+        r"Music generation and sung songs",
+    ),
+    DocClaim(
+        "music-not-planned-ru",
+        "README-ru.md",
+        r"пишет песни",
+        "docs/ROADMAP-ru.md",
+        r"Генерация музыки и озвученных песен",
+    ),
+    DocClaim(
+        "music-image-size",
+        "docs/MUSIC.md",
+        r"20\.8 GB on disk",
+        "docs/MUSIC.md",
+        r"~9 GB",
+    ),
+    DocClaim(
+        "music-image-size-ru",
+        "docs/MUSIC-ru.md",
+        r"20,8 ГБ на диске",
+        "docs/MUSIC-ru.md",
+        r"~9 ГБ",
+    ),
+)
+
+
+def _check_doc_claims(root: Path) -> list[tuple[str, str, str]]:
+    findings: list[tuple[str, str, str]] = []
+    for claim in DOC_CLAIMS:
+        anchor = _read(root, claim.anchor_doc)
+        forbidden = _read(root, claim.forbidden_doc)
+        if not re.search(claim.anchor_pattern, anchor):
+            findings.append(
+                (claim.id, "anchor_lost", f"{claim.anchor_doc} no longer contains {claim.anchor_pattern!r}")
+            )
+            continue
+        if re.search(claim.forbidden_pattern, forbidden):
+            findings.append(
+                (
+                    claim.id,
+                    "contradicted",
+                    f"{claim.forbidden_doc} still contains {claim.forbidden_pattern!r}, which the shipped feature denies",
+                )
+            )
+    return findings
+
+
+
 
 def _read(root: Path, name: str) -> str:
     path = root / name
@@ -160,6 +231,8 @@ def main() -> int:
                 (claim.id, "contradicted", f"{claim.code} contains {claim.code_must_not!r}, which the document denies")
             )
 
+    findings.extend(_check_doc_claims(root))
+
     listed = _behaviour_sentences(root) if args.list else []
 
     if args.json:
@@ -180,7 +253,7 @@ def main() -> int:
             print(f"\n{len(listed)} behaviour-shaped sentence(s) to read against the code:")
             for file_name, number, text in listed[: args.max_list]:
                 print(f"  {file_name}:{number}  {text}")
-        print(f"\n{len(findings)} claim(s) out of step, {len(CLAIMS)} registered")
+        print(f"\n{len(findings)} claim(s) out of step, {len(CLAIMS) + len(DOC_CLAIMS)} registered")
     return 1 if findings else 0
 
 

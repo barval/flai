@@ -3491,7 +3491,10 @@ class RedisRequestQueue:
         elapsed = round(time.time() - started, 1)
         template = base._("Music generated from request: {query}", lang=lang)
         prefix = "🎵 " + template.replace("{query}", "")
-        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+        message_text = json.dumps(
+            {"prefix": prefix, "text": query, "lyrics": lyrics},
+            ensure_ascii=False,
+        )
         return self._save_and_respond(
             session_id,
             message_text,

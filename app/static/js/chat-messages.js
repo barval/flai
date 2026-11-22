@@ -601,8 +601,15 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 if (parsed && typeof parsed.prefix === 'string' && typeof parsed.text === 'string') {
                     const escapedPrefix = escapeHtml(parsed.prefix);
                     const escapedText = escapeHtml(parsed.text);
-                    contentHTML += '<strong>' + escapedPrefix + '</strong>' + escapedText;
-                    msgDiv.dataset.cleanText = parsed.text;
+                    let lyricsHTML = '';
+                    if (typeof parsed.lyrics === 'string' && parsed.lyrics.trim()) {
+                        const lines = parsed.lyrics.split('\n')
+                            .map(line => escapeHtml(line))
+                            .join('<br>');
+                        lyricsHTML = '<div class="song-lyrics">' + lines + '</div>';
+                    }
+                    contentHTML += '<strong>' + escapedPrefix + '</strong>' + escapedText + lyricsHTML;
+                    msgDiv.dataset.cleanText = [parsed.text, parsed.lyrics].filter(Boolean).join('\n');
                 } else {
                     throw new Error('not structured');
                 }

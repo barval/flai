@@ -187,7 +187,7 @@ class TestToolDefinitions:
     """Verify tool definitions format."""
 
     def test_definitions_count(self):
-        assert len(TOOL_DEFINITIONS) == 9
+        assert len(TOOL_DEFINITIONS) == 10
 
     def test_all_have_function_type(self):
         for tool in TOOL_DEFINITIONS:
@@ -220,6 +220,7 @@ class TestToolDefinitions:
             "camera_snapshot",
             "list_rooms",
             "time_calc",
+            "generate_music",
         }
         assert names == expected
 

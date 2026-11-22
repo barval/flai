@@ -117,8 +117,8 @@ class MusicModule:
 
     @property
     def audio_format(self) -> str:
-        value = str(setting("MUSIC_FORMAT", "wav")).strip().lower().lstrip(".")
-        return value if value in {"wav", "mp3", "flac", "opus", "aac"} else "wav"
+        value = str(setting("MUSIC_FORMAT", "mp3")).strip().lower().lstrip(".")
+        return value if value in {"wav", "mp3", "flac", "opus", "aac"} else "mp3"
 
     @property
     def default_duration_s(self) -> int:

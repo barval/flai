@@ -146,8 +146,8 @@ def test_duration_grows_with_the_lyric():
 def test_audio_format_defaults_to_wav_and_accepts_mp3(monkeypatch):
     module = MusicModule()
     monkeypatch.delenv("MUSIC_FORMAT", raising=False)
-    assert module.audio_format == "wav"
-    monkeypatch.setenv("MUSIC_FORMAT", "MP3")
     assert module.audio_format == "mp3"
-    monkeypatch.setenv("MUSIC_FORMAT", "exe")
+    monkeypatch.setenv("MUSIC_FORMAT", "WAV")
     assert module.audio_format == "wav"
+    monkeypatch.setenv("MUSIC_FORMAT", "exe")
+    assert module.audio_format == "mp3"

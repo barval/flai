@@ -148,9 +148,9 @@ def load_config(app):
     app.config["MUSIC_LM_MODEL"] = os.getenv("MUSIC_LM_MODEL", "acestep-5Hz-lm-0.6B")
     app.config["MUSIC_DEFAULT_DURATION_S"] = int(os.getenv("MUSIC_DEFAULT_DURATION_S", 30))
     app.config["MUSIC_MAX_DURATION_S"] = int(os.getenv("MUSIC_MAX_DURATION_S", 600))
-    # ACE-Step writes wav, mp3, flac, opus or aac. WAV is lossless and every
-    # browser plays it, at ~11.5 MB per minute; mp3 is ~1.4 MB per minute.
-    app.config["MUSIC_FORMAT"] = os.getenv("MUSIC_FORMAT", "wav").strip().lower()
+    # ACE-Step writes wav, mp3, flac, opus or aac. mp3 is the default (~1.4 MB
+    # per minute); wav is lossless and larger (~11.5 MB per minute).
+    app.config["MUSIC_FORMAT"] = os.getenv("MUSIC_FORMAT", "mp3").strip().lower()
     app.config["WAN_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("WAN_VIDEO_CPU_TIME_BUDGET_S", "0"))
 
     # VRAM and RAM policy. These used to be read with ``os.getenv`` from deep

@@ -94,9 +94,8 @@ install ships the 2B pair for this reason.
 
 ## Output format
 
-`MUSIC_FORMAT` selects what the sidecar writes: `wav` (default, lossless, ~11.5 MB per
-minute and playable in every browser), `mp3` (~1.4 MB per minute), `flac`, `opus` or
-`aac`. The message carries the matching MIME type, so the player and the download work
+`MUSIC_FORMAT` selects what the sidecar writes: `mp3` (default, ~1.4 MB per minute),
+`wav` (lossless, ~11.5 MB per minute), `flac`, `opus` or `aac`. The message carries the matching MIME type, so the player and the download work
 for any of them.
 
 ## Quality is stochastic

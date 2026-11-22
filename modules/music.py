@@ -75,8 +75,13 @@ def plain_lyrics(lyrics: str) -> str:
     return "\n".join(kept).strip()
 
 
-def fit_duration(lyrics: str, requested: int, default: int = 30, per_line: int = 5) -> int:
-    """A duration that fits the words: ~5 s per line, never below the default."""
+def fit_duration(lyrics: str, requested: int, default: int = 30, per_line: int = 6) -> int:
+    """A duration that fits the words: ~6 s per line, never below the default.
+
+    Measured on a 16-line Russian lyric: at 5 s per line the song ended exactly at
+    the requested 80 s, cutting the last phrase mid-line. The model also repeats a
+    chorus, so the line count is a floor, not the whole performance.
+    """
     lines = lyric_lines(lyrics)
     needed = max(default, lines * per_line)
     return max(int(requested or 0), needed)

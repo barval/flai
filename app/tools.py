@@ -192,7 +192,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "duration_s": {
                         "type": "integer",
-                        "description": "Song length in seconds, 10-600. Match it to the lyrics: 3-5 s per line.",
+                        "description": "Song length in seconds, 10-600. Match it to the lyrics: about 6 s per line.",
                     },
                 },
                 "required": ["prompt", "lyrics"],

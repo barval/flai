@@ -55,7 +55,8 @@ Two rules come from measurement, not from taste:
   them the words came back at 0.78–0.83 recall.
 - **Duration must fit the lyric length.** Six lines at 30 s sang the words; ten lines at
   45 s scored 0.04–0.50, and six lines at 60 s made the planner label the track an
-  instrumental and drop the vocals. Roughly 3–5 seconds per line.
+  instrumental and drop the vocals. Roughly 6 seconds per line: measured, a 16-line lyric at 5 s per line ended exactly at the
+requested 80 s and cut the last phrase.
 
 The client adds structure tags when the text has none and refuses a duration above
 `MUSIC_MAX_DURATION_S` instead of silently clamping it.

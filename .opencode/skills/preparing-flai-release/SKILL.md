@@ -40,6 +40,7 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_skills_coverage.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_features.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_feature_wiring.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
 python3 .opencode/skills/opening-flai-release/scripts/check_version_markers.py \
   --version "${REL#v}" --previous "${PREV#v}" --released
@@ -162,6 +163,37 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_release_branches.p
 ```
 
 Record: branch, commits, merged status, owner, conflicts. The release range is `$PREV..$REL`, not `$PREV..HEAD`.
+
+## Phase 0.5 — Feature wiring
+
+Every surface gate can pass while a feature is unreachable. That happened in v13.6:
+`docs/MUSIC.md`, the READMEs, the deploy scripts and the compose profile were all in
+place, but neither the marker router nor the kernel prompt knew that music exists, so
+"compose a song" was answered as a **video** request; the README's full-stack example
+also never named `--with-music`. No existing check compared "a capability exists" with
+"the product can reach it".
+
+For every feature added in the range, walk this list by hand, then add one entry to
+`FEATURES` in `check_feature_wiring.py` naming each file and the exact marker:
+
+1. **Reachability.** If a model must choose the capability, its name appears in the
+   answer prompt (`prompts/*/chat.template`) and the routing prompt
+   (`prompts/*/base_text.template`, `prompts/en/kernel.template`) with a sentence that
+   says what it is NOT. A status label the user sees ("Generating video") is proof the
+   route was wrong.
+2. **Queue and configuration.** The task type is routed (fast/slow) and dispatched; every
+   new setting is in `app/config.py`, `.env`, `.env.example` and `docs/CONFIGURATION*.md`.
+3. **Deploy.** Both scripts parse the flag, write the env key, describe it in `--help`,
+   and the agent skill `deploying-flai` names it. Compose profiles exist in every file
+   that runs that stack (GPU, CPU, AMD, Intel as applicable).
+4. **Documentation.** Its own `docs/X.md` + `docs/X-ru.md`, a README row (EN and RU), a
+   What's New bullet, and every place that enumerates capabilities or profiles:
+   `CONFIGURATION`, `ARCHITECTURE`, `FAQ`.
+5. **Capability list.** `prompts/{en,ru}/skills.txt` names it (the skills-coverage gate
+   fails otherwise) — and the phrase must be true, not decoration.
+
+Run `check_feature_wiring.py` after adding the entry; it is the ratchet that keeps these
+places from drifting apart again.
 
 ## Phase 1 — Merge every release branch
 

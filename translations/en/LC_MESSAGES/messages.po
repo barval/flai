@@ -6481,3 +6481,5 @@ msgstr "A song lasts from 10 to 600 seconds"
 
 msgid "Music is being created and will arrive as a separate message"
 msgstr "Music is being created and will arrive as a separate message"
+msgid "The song is still being created and will arrive as a separate message. Do not say it is ready."
+msgstr "The song is still being created and will arrive as a separate message. Do not say it is ready."

@@ -6537,3 +6537,5 @@ msgstr "Песня длится от 10 до 600 секунд"
 
 msgid "Music is being created and will arrive as a separate message"
 msgstr "Музыка создаётся и придёт отдельным сообщением"
+msgid "The song is still being created and will arrive as a separate message. Do not say it is ready."
+msgstr "Песня ещё создаётся и придёт отдельным сообщением. Не пиши, что она готова."

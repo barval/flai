@@ -909,6 +909,9 @@ class ResourceManager:
                     self.unload_llamacpp_model(llamacpp_url, model_id=model_id)
             else:
                 logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
+                # The music sidecar has no unload endpoint and holds ~5.5 GB; a
+                # chat model needing 14.2 GB cannot fit beside it (measured).
+                self.restart_music_container()
                 self.unload_llamacpp_model(llamacpp_url)
 
             # 2. Unload video pipeline
@@ -1183,6 +1186,14 @@ class ResourceManager:
         multimodal model needs.
         """
         try:
+            state = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Running}}", "flai-music"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if state.returncode != 0 or state.stdout.strip() != "true":
+                return
             result = subprocess.run(
                 ["docker", "restart", "flai-music"],
                 capture_output=True,

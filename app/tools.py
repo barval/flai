@@ -1705,10 +1705,14 @@ def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
         duration = int(kw.get("duration_s") or 0)
     except (TypeError, ValueError):
         duration = 0
-    duration = duration or module.default_duration_s
-    if duration < 10 or duration > module.max_duration_s:
+    from modules.music import fit_duration
+
+    requested = duration or module.default_duration_s
+    if requested < 10 or requested > module.max_duration_s:
         with force_locale(language):
             return "⚠️ " + str(_("A song lasts from 10 to 600 seconds"))
+    # A duration shorter than the lyrics allows makes the model drop the chorus.
+    duration = min(fit_duration(lyrics, requested, module.default_duration_s), module.max_duration_s)
 
     # The message must quote the person, not the English style prompt the model wrote.
     display = str(ctx.get("message_text") or "").strip() or prompt

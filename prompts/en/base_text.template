@@ -39,7 +39,8 @@ NOT category 3:
 - a request to write code/HTML/script/page that shows/draws/animates anything (canvas, CSS animation, video tag, Three.js) — that is category 8;
 - a description of a scene or a video plot;
 - mentioning the word "video"/"animation"/"animated" in the text or in a description of what the code must do;
-- a "how to make a video?" question — that is an explanation, not generation.
+- a "how to make a video?" question — that is an explanation, not generation;
+- a request to compose or sing a song, or to make music ("write a song…", "sing…", "make a track") — that is NOT video and NOT an image: answer with ordinary chat and no marker, the generate_music tool produces the audio file.
 Decide BY THE RESULT: does the user want the actual video file, or something else (code, text, reply, explanation)?
 
 Camera view requests: rules and room list under INPUT DATA

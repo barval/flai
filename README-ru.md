@@ -453,6 +453,10 @@ cd flai
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
+# + генерация музыки (ACE-Step 1.5, MIT) — ~11 ГБ весов при первом запуске
+./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag \
+  --with-video --with-music
+
 # + долговременная память, + веб-поиск, + краулер сайтов, + сетевая диагностика
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag \
   --with-video --with-slm --with-search --with-crawler --with-net-tools
@@ -461,7 +465,8 @@ cd flai
 ./deploy-ru.sh --download-models --with-image-gen --run-tests
 ```
 
-Нет NVIDIA GPU? Добавьте `--cpu`; тогда автоматически выбирается `docker-compose.cpu.yml`. Переключение между GPU и CPU не требует пересборки — образы имеют теги по бэкенду (CPU/GPU) и сосуществуют локально.
+Нет NVIDIA GPU? Добавьте `--cpu`; тогда автоматически выбирается `docker-compose.cpu.yml`. Музыка на CPU —
+только осознанно и медленно: `MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --cpu --with-music` (4–5 минут на песню, 15 ГБ RAM). Переключение между GPU и CPU не требует пересборки — образы имеют теги по бэкенду (CPU/GPU) и сосуществуют локально.
 
 ### Обновление установки
 
@@ -506,6 +511,9 @@ docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
   --profile with-video --profile with-slm --profile with-search --profile with-crawler \
   --profile with-net-tools up -d
+
+# Генерация музыки: веса лежат в services/music/models (~11 ГБ, скачиваются при первом запуске)
+docker compose -f docker-compose.gpu.yml --profile with-music up -d
 
 # Только сетевая диагностика: сайдкар входит в сеть, общую лишь с веб-приложением,
 # а флаг --with-net-tools у скрипта развёртывания ещё и генерирует его токен.

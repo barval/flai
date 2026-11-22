@@ -448,6 +448,10 @@ cd flai
 #   Wan: slower, 5 s, better motion (GPU only)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
+# + music generation (ACE-Step 1.5, MIT) — ~11 GB of weights on the first start
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \
+  --with-video --with-music
+
 # + long-term memory, + web search, + site crawler, + network diagnostics
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \
   --with-video --with-slm --with-search --with-crawler --with-net-tools
@@ -456,7 +460,8 @@ cd flai
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
 
-No NVIDIA GPU? Add `--cpu`; `docker-compose.cpu.yml` is then selected automatically. Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
+No NVIDIA GPU? Add `--cpu`; `docker-compose.cpu.yml` is then selected automatically. Music on CPU is
+opt-in and slow — `MUSIC_ALLOW_CPU=1 ./deploy.sh --cpu --with-music` (4–5 minutes per song, 15 GB of RAM). Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
 
 ### Updating an installation
 
@@ -501,6 +506,9 @@ docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
   --profile with-video --profile with-slm --profile with-search --profile with-crawler \
   --profile with-net-tools up -d
+
+# Music generation: the weights live in services/music/models (~11 GB, fetched on first start)
+docker compose -f docker-compose.gpu.yml --profile with-music up -d
 
 # Network diagnostics on its own: the sidecar joins a network shared only with the
 # web app, and `--with-net-tools` in the deploy script also generates its token.

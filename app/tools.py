@@ -1710,11 +1710,13 @@ def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
         with force_locale(language):
             return "⚠️ " + str(_("A song lasts from 10 to 600 seconds"))
 
+    # The message must quote the person, not the English style prompt the model wrote.
+    display = str(ctx.get("message_text") or "").strip() or prompt
     app.request_queue.add_request(
         login,
         session_id,
-        {"type": "music_gen", "text": prompt, "lyrics": lyrics, "duration": duration,
-         "preview": (prompt[:50] + "...") if prompt else "Music"},
+        {"type": "music_gen", "text": display, "prompt": prompt, "lyrics": lyrics,
+         "duration": duration, "preview": (display[:50] + "...") if display else "Music"},
         int(ctx.get("user_class") or 2),
         language,
         task_type="music_gen",

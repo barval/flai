@@ -1726,7 +1726,7 @@ def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
         task_type="music_gen",
     )
     with force_locale(language):
-        return str(_("Music is being created and will arrive as a separate message"))
+        return str(_("The song is still being created and will arrive as a separate message. Do not say it is ready."))
 
 
 _EXECUTOR_MAP: dict[str, Any] = {

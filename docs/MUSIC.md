@@ -8,7 +8,7 @@ speaks its REST API.
 |---|---|
 | Model | ACE-Step 1.5, `acestep-v15-turbo` (2B DiT) + `acestep-5Hz-lm-0.6B` |
 | Licence | MIT for code and weights |
-| Image | ~9 GB (CUDA runtime + torch); weights are a volume, ~11 GB on first start |
+| Image | 20.8 GB on disk (about 9 GB compressed when pulled); weights are a volume, 11 GB on first start |
 | Enable | `./deploy.sh --with-music`, or `--profile with-music` manually |
 | Settings | `MUSIC_URL` (empty disables the module), `MUSIC_TIMEOUT_S`, `MUSIC_MODEL`, `MUSIC_LM_MODEL`, `MUSIC_DEFAULT_DURATION_S`, `MUSIC_MAX_DURATION_S` |
 
@@ -18,7 +18,7 @@ speaks its REST API.
 |---|---|---|
 | VRAM | 8 GB minimum (6.9 GB measured peak), 16 GB comfortable | — |
 | RAM | ~6 GB (offloaded weights) | **15 GB** measured |
-| Disk | image 20.8 GB + weights 11 GB | image 11.8 GB + weights 11 GB |
+| Disk | image 20.8 GB on disk + weights 11 GB | image 11.8 GB on disk + weights 11 GB |
 | Image | `flai-music:cuda` (`services/music/Dockerfile`) | `flai-music:cpu` (`Dockerfile.cpu`, CPU torch wheel) |
 | Speed, 30 s song | 12–15 s | 4–5 min (~8x real time) |
 | Enable | `./deploy.sh --with-music` | `MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music` |

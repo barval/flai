@@ -44,22 +44,6 @@ This list is not a commitment. Items move when their priority changes, and an it
   its benchmark. Next: a few hundred labelled queries, a trained head or a
   fine-tune, and the hybrid rule (confident → fast path, unsure → kernel) only if
   it clears the kernel on our own cases.
-- **Music generation and sung songs (prototype first)** — FLAI generates images and video but nothing
-  musical. One candidate fits the licence rule: **ACE-Step 1.5** (MIT on the code *and* the weights,
-  50+ lyric languages including Russian, runs from under 4 GB of VRAM with quantisation and offload,
-  ships a REST API, a Dockerfile and a compose file). The alternatives fail on something concrete:
-  MusicGen and Stable Audio Open generate no vocals and their weights are CC-BY-NC and a gated
-  community licence; YuE2's weights are CC-BY-NC and need 24 GB; DiffRhythm is Apache-2.0 but
-  understands only Chinese and English. The prototype ran on 2026-11-21: the 2B pair peaks at
-  **6.9 GB of 16.3 GB**, renders a 30 s Russian song in **10–12 s**, and the sung lyrics come back
-  through the installation's own Whisper at **0.78–0.83 word recall** — but only when the lyrics
-  carry `[verse]`/`[chorus]` structure; without it there is no intelligible vocal at all, and a
-  duration longer than the lyric set makes the planner produce an instrumental. The next decision is
-  whether a music sidecar (a queue task type next to video) is worth building. Design notes live in
-  the local spec tree, not in the published docs.
-
-- Plugin architecture for custom modules
-- Multi-GPU support
 - **Multi-platform GPU support** — first iteration shipped in v13.0: the compose stack is split into a
   shared base plus per-vendor entry files, llama.cpp has a Vulkan image, `GpuInfo.accelerator` separates
   "a GPU" from "CUDA", AMD VRAM is read from sysfs and Intel from its Vulkan heaps, and the deploy scripts

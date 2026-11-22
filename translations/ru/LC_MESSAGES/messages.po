@@ -6535,25 +6535,32 @@ msgstr "Для песни нужен текст"
 msgid "A song lasts from 10 to 600 seconds"
 msgstr "Песня длится от 10 до 600 секунд"
 
-msgid "Music is being created and will arrive as a separate message"
-msgstr "Музыка создаётся и придёт отдельным сообщением"
 msgid "The song is still being created and will arrive as a separate message. Do not say it is ready."
 msgstr "Песня ещё создаётся и придёт отдельным сообщением. Не пиши, что она готова."
+
 msgid "The lyrics are too long for one song; split the text into parts"
-msgstr "Песня вмещает до 12 строк текста; разделите текст на части"
+msgstr "Текст слишком длинный для одной песни; разделите его на части"
+
 msgid "Music generation"
 msgstr "Генерация музыки"
+
 msgid "Address of the music sidecar (empty disables music)"
 msgstr "Адрес музыкального сайдкара (пусто — музыка выключена)"
+
 msgid "Time budget for one song (seconds)"
 msgstr "Бюджет времени на одну песню (секунды)"
+
 msgid "DiT model the sidecar renders with"
 msgstr "Модель DiT, которой рендерит сайдкар"
+
 msgid "Language model that plans the song"
 msgstr "Языковая модель, планирующая песню"
+
 msgid "Song length when the lyrics do not decide it (seconds)"
 msgstr "Длительность, если её не задаёт текст (секунды)"
+
 msgid "Longest accepted song (seconds)"
 msgstr "Максимальная длительность песни (секунды)"
+
 msgid "Output format: wav, mp3, flac, opus or aac"
 msgstr "Формат файла: wav, mp3, flac, opus или aac"

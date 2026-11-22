@@ -95,7 +95,10 @@
   30 s song is 4–5 minutes. The XL 4B tier does not fit a 16 GB card (CUDA OOM at a 15.8 GB
   peak) and needs 24 GB. The web container now carries `ulimits: nofile: 65536`: its worker
   exhausted the image's soft limit of 1024 after about 14 hours, after which every health check
-  failed with `Errno 24`. Details → [MUSIC.md](docs/MUSIC.md).
+  failed with `Errno 24`. A song arrives as **mp3** by default (~4 MB for three minutes;
+  `wav` stays one setting away), the message shows the lyrics under the player without the
+  `[verse]`/`[chorus]` markers, and every `MUSIC_*` key is editable in Admin → Settings →
+  Music generation. Details → [MUSIC.md](docs/MUSIC.md).
 
 - **A document request says what it is doing.** The chat status stopped at "Thinking…" while the
   model composed a `write_document` call: in the measured case an SVG cost 25 s of argument

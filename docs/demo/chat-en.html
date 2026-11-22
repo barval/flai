@@ -1490,6 +1490,15 @@ footer {
     margin-top: 0.2rem;
 }
 
+.song-lyrics {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-color, #ddd);
+    color: var(--text-secondary, #555);
+    line-height: 1.5;
+    font-style: italic;
+}
+
 .download-link-inline {
     font-size: 1.2rem;
     text-decoration: none;
@@ -7251,6 +7260,15 @@ footer {
     font-family: monospace;
     display: block;
     margin-top: 0.2rem;
+}
+
+.song-lyrics {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-color, #ddd);
+    color: var(--text-secondary, #555);
+    line-height: 1.5;
+    font-style: italic;
 }
 
 .download-link-inline {
@@ -17451,8 +17469,15 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 if (parsed && typeof parsed.prefix === 'string' && typeof parsed.text === 'string') {
                     const escapedPrefix = escapeHtml(parsed.prefix);
                     const escapedText = escapeHtml(parsed.text);
-                    contentHTML += '<strong>' + escapedPrefix + '</strong>' + escapedText;
-                    msgDiv.dataset.cleanText = parsed.text;
+                    let lyricsHTML = '';
+                    if (typeof parsed.lyrics === 'string' && parsed.lyrics.trim()) {
+                        const lines = parsed.lyrics.split('\n')
+                            .map(line => escapeHtml(line))
+                            .join('<br>');
+                        lyricsHTML = '<div class="song-lyrics">' + lines + '</div>';
+                    }
+                    contentHTML += '<strong>' + escapedPrefix + '</strong>' + escapedText + lyricsHTML;
+                    msgDiv.dataset.cleanText = [parsed.text, parsed.lyrics].filter(Boolean).join('\n');
                 } else {
                     throw new Error('not structured');
                 }

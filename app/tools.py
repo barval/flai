@@ -1679,10 +1679,6 @@ def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
     return _exec_schedule(ctx, "action", **kw)
 
 
-# Measured: 16 lines produced a looping chorus and dropped verses; 6-8 lines sing.
-MAX_MUSIC_LINES = 12
-
-
 def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
     """Queue a song and answer with a sentence the model can repeat."""
     from flask import current_app
@@ -1711,9 +1707,12 @@ def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
         duration = 0
     from modules.music import fit_duration, lyric_lines
 
-    if lyric_lines(lyrics) > MAX_MUSIC_LINES:
+    # Six seconds per line is the sizing; only a text that cannot fit the largest
+    # song is refused. A 16-line Russian lyric sung end to end, so the line count
+    # is not a limit by itself — the same count in English looped the chorus.
+    if lyric_lines(lyrics) * 6 > module.max_duration_s:
         with force_locale(language):
-            return "⚠️ " + str(_("A song holds up to 12 lines of lyrics; split the text into parts"))
+            return "⚠️ " + str(_("The lyrics are too long for one song; split the text into parts"))
     requested = duration or module.default_duration_s
     if requested < 10 or requested > module.max_duration_s:
         with force_locale(language):

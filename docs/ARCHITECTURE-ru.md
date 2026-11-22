@@ -116,7 +116,7 @@
 - `services/llamacpp/` — серверы llama.cpp
 - `llama-swap` — Docker-образ `ghcr.io/mostlygeek/llama-swap:v273-cuda-b12407` (зафиксирован; в upstream в версии 243 изменился формат конфигурации, и плавающий тег `:cuda` сломал новые развёртывания — см. таблицу CUDA в README)
 
-**Профили Docker compose**: `with-image-gen`, `with-voice-piper`, `with-voice-kokoro`, `with-rag`, `with-video`, `with-slm`, `with-search`. (`with-voice` сохранён как псевдоним для `with-voice-piper`.)
+**Профили Docker compose**: `with-image-gen`, `with-voice-piper`, `with-voice-kokoro`, `with-rag`, `with-video`, `with-slm`, `with-search`, `with-music`. (`with-voice` сохранён как псевдоним для `with-voice-piper`.)
 
 ## Жизненный цикл моделей на одной потребительской GPU
 

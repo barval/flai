@@ -356,7 +356,7 @@ flai.example.com {
 
 ```bash
 # Start all services (multimodal + images + voice + RAG + video + long-term memory + web search)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search --profile with-music up -d
 
 # Chat + voice only (Piper backend; use with-voice-kokoro for Kokoro)
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d

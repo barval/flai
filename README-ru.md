@@ -459,7 +459,7 @@ cd flai
 
 # + долговременная память, + веб-поиск, + краулер сайтов, + сетевая диагностика
 ./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag \
-  --with-video --with-slm --with-search --with-crawler --with-net-tools
+  --with-video --with-slm --with-search --with-crawler --with-net-tools --with-music
 
 # Прогнать набор тестов после развёртывания
 ./deploy-ru.sh --download-models --with-image-gen --run-tests
@@ -510,7 +510,7 @@ docker compose -f docker-compose.gpu.yml up -d
 docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
   --profile with-video --profile with-slm --profile with-search --profile with-crawler \
-  --profile with-net-tools up -d
+  --profile with-net-tools --profile with-music up -d
 
 # Генерация музыки: веса лежат в services/music/models (~11 ГБ, скачиваются при первом запуске)
 docker compose -f docker-compose.gpu.yml --profile with-music up -d

@@ -846,8 +846,15 @@ resolve_stack() {
     fi
 
     if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        local ram_gb disk_gb
+        ram_gb=$(awk '/MemTotal/{printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo "?")
+        disk_gb=$(df -Pk /home 2>/dev/null | awk 'NR==2{printf "%.0f", $4/1048576}')
         error "Music on a CPU host takes 4–5 minutes per 30-second song and ~15 GB of RAM."
-        error "That competes with the main model, so it is opt-in: MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
+        error "It also needs ~23 GB of disk: an 11.8 GB image and 11 GB of weights."
+        error "This host: ${ram_gb} GB of RAM, ${disk_gb} GB free on /home."
+        error "The main model takes ~11 GB more on CPU, so music is opt-in:"
+        error "  MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
+        error "Below 25 GB of free disk, free space first — the image and the weights will not fit."
         exit 1
     fi
 }

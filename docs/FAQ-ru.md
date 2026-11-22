@@ -63,7 +63,7 @@ MIT. См. [../LICENSE](../LICENSE).
 
 ### Какие профили compose мне нужны?
 
-`--profile with-image-gen` для изображений, `--profile with-video` для видео, `--profile with-rag` для поиска по документам, `--profile with-voice-piper` или `--profile with-voice-kokoro` для голоса, `--profile with-slm` для долговременной памяти, `--profile with-search` для веб-поиска, `--profile with-crawler` для краулинга сайтов. Каждый опционален; базовый стек — чат. См. [CONFIGURATION-ru.md](CONFIGURATION-ru.md).
+`--profile with-image-gen` для изображений, `--profile with-video` для видео, `--profile with-rag` для поиска по документам, `--profile with-voice-piper` или `--profile with-voice-kokoro` для голоса, `--profile with-slm` для долговременной памяти, `--profile with-search` для веб-поиска, `--profile with-crawler` для краулинга сайтов, `--profile with-music` для песен. Каждый опционален; базовый стек — чат. См. [CONFIGURATION-ru.md](CONFIGURATION-ru.md).
 
 ### Как стать администратором?
 

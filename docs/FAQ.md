@@ -63,7 +63,7 @@ Yes. The admin panel has a **Model Hub** that searches Hugging Face for GGUF mod
 
 ### Which compose profiles do I need?
 
-`--profile with-image-gen` for images, `--profile with-video` for video, `--profile with-rag` for document search, `--profile with-voice-piper` or `--profile with-voice-kokoro` for voice, `--profile with-slm` for long-term memory, `--profile with-search` for web search, `--profile with-crawler` for site crawling. Each is optional; the base stack is chat. See [CONFIGURATION.md](CONFIGURATION.md).
+`--profile with-image-gen` for images, `--profile with-video` for video, `--profile with-rag` for document search, `--profile with-voice-piper` or `--profile with-voice-kokoro` for voice, `--profile with-slm` for long-term memory, `--profile with-search` for web search, `--profile with-crawler` for site crawling, `--profile with-music` for songs. Each is optional; the base stack is chat. See [CONFIGURATION.md](CONFIGURATION.md).
 
 ### How do I become admin?
 

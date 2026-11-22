@@ -115,7 +115,7 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 - `services/llamacpp/` — llama.cpp servers
 - `llama-swap` — Docker image `ghcr.io/mostlygeek/llama-swap:v273-cuda-b12407` (pinned; upstream changed the config format in v243 and the floating `:cuda` tag then broke fresh deployments — see README CUDA table)
 
-**Docker compose profiles**: `with-image-gen`, `with-voice-piper`, `with-voice-kokoro`, `with-rag`, `with-video`, `with-slm`, `with-search`. (`with-voice` is kept as an alias for `with-voice-piper`.)
+**Docker compose profiles**: `with-image-gen`, `with-voice-piper`, `with-voice-kokoro`, `with-rag`, `with-video`, `with-slm`, `with-search`, `with-music`. (`with-voice` is kept as an alias for `with-voice-piper`.)
 
 ## Model Lifecycle on a Single Consumer GPU
 

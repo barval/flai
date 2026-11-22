@@ -114,7 +114,7 @@ gunicorn -c gunicorn_config.py wsgi:app
 # Docker compose (all profiles)
 docker compose -f docker-compose.gpu.yml \
   --profile with-image-gen --profile with-voice-piper --profile with-rag \
-  --profile with-video --profile with-slm --profile with-search up -d
+  --profile with-video --profile with-slm --profile with-search --profile with-music up -d
 
 # Load test
 locust -f tests/load/locustfile.py --host http://localhost:5000

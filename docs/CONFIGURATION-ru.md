@@ -73,6 +73,7 @@ MUSIC_MODEL=acestep-v15-turbo     # DiT 2B; XL 4B — отдельная заг�
 MUSIC_LM_MODEL=acestep-5Hz-lm-0.6B
 MUSIC_DEFAULT_DURATION_S=30       # 3-5 секунд звука на строку текста
 MUSIC_MAX_DURATION_S=600          # более длинный запрос отклоняется, а не обрезается
+MUSIC_FORMAT=wav                  # wav | mp3 | flac | opus | aac
 ```
 
 Лимиты на стороне контейнеров: `WAN_CLI_TIMEOUT` (1800 с на GPU, 7200 с на CPU),

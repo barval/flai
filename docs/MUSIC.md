@@ -92,6 +92,13 @@ and the task failed. The XL tier needs 24 GB, or explicit offload plus INT8 quan
 which turns it into a CPU-bound run (a 20 s song took 144 s on CPU earlier). The default
 install ships the 2B pair for this reason.
 
+## Output format
+
+`MUSIC_FORMAT` selects what the sidecar writes: `wav` (default, lossless, ~11.5 MB per
+minute and playable in every browser), `mp3` (~1.4 MB per minute), `flac`, `opus` or
+`aac`. The message carries the matching MIME type, so the player and the download work
+for any of them.
+
 ## Quality is stochastic
 
 Two runs of the same configuration scored 0.04 and 0.50 recall on the long fixture. A

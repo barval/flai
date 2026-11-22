@@ -116,6 +116,11 @@ class MusicModule:
         return str(setting("MUSIC_LM_MODEL", "acestep-5Hz-lm-0.6B"))
 
     @property
+    def audio_format(self) -> str:
+        value = str(setting("MUSIC_FORMAT", "wav")).strip().lower().lstrip(".")
+        return value if value in {"wav", "mp3", "flac", "opus", "aac"} else "wav"
+
+    @property
     def default_duration_s(self) -> int:
         return int(setting("MUSIC_DEFAULT_DURATION_S", 30))
 
@@ -193,7 +198,7 @@ class MusicModule:
             "lyrics": structured,
             "vocal_language": language,
             "audio_duration": duration,
-            "audio_format": "wav",
+            "audio_format": self.audio_format,
             "thinking": True,
             "batch_size": 1,
             "inference_steps": 8,
@@ -219,7 +224,7 @@ class MusicModule:
         if not file_url:
             raise MusicError("failed", "no audio in result")
 
-        target = Path(out_dir or Path(".")) / f"{uuid.uuid4().hex}.wav"
+        target = Path(out_dir or Path(".")) / f"{uuid.uuid4().hex}.{self.audio_format}"
         target.parent.mkdir(parents=True, exist_ok=True)
         url = file_url if file_url.startswith("http") else f"{self.base_url}{file_url}"
         try:

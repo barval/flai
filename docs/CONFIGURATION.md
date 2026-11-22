@@ -73,6 +73,7 @@ MUSIC_MODEL=acestep-v15-turbo     # 2B DiT; the XL 4B tier is a separate downloa
 MUSIC_LM_MODEL=acestep-5Hz-lm-0.6B
 MUSIC_DEFAULT_DURATION_S=30       # 3-5 seconds of audio per lyric line
 MUSIC_MAX_DURATION_S=600          # a longer request is refused, never clamped
+MUSIC_FORMAT=wav                  # wav | mp3 | flac | opus | aac
 ```
 
 Container-side limits: `WAN_CLI_TIMEOUT` (1800 s GPU, 7200 s CPU), `WAN_OFFLOAD_BELOW_VRAM_MB`

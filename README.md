@@ -82,6 +82,13 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **The assistant writes songs.** Ask for a song, or hand it your own lyrics, and it comes back
+  as an audio message with a player. ACE-Step 1.5 (MIT) runs in its own container under the
+  `with-music` profile: a 30 s Russian song takes 12–15 s on a 16 GB card and peaks at 7 GB.
+  Lyrics get `[verse]`/`[chorus]` automatically — measured, without that structure the same words
+  came back unintelligible. On a CPU host it is opt-in (`MUSIC_ALLOW_CPU=1`) and takes 4–5
+  minutes per song. → [MUSIC.md](docs/MUSIC.md)
+
 - **The assistant can change what it wrote — and draw.** A document it created can be edited in
   place and rolled back to an earlier state: the last ten versions are kept, a restore is itself a
   new version, and a repaired `.docx`, `.xlsx` or `.pdf` is re-rendered from the stored body

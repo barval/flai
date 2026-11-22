@@ -3,6 +3,7 @@
   - 🖌️ I edit uploaded images based on requests in the comments to them.
   - 🔍 I analyze uploaded images and answer questions about them.
   - 🎬 I create videos from images.
+  - 🎵 I compose music and sung songs from lyrics and a style description.
   - 🎤 I recognize voice messages and carry out tasks based on them.
   - 🔊 I transcribe audio files — converting speech to text.
   - 📹 I display snapshots from surveillance cameras (if connected) and answer questions about them.

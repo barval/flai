@@ -82,6 +82,21 @@
 
 ### Added
 
+- **The assistant can write a song.** ACE-Step 1.5 (MIT on code and weights) runs as its own
+  container under the `with-music` profile; a chat request with lyrics is queued as one GPU task,
+  rendered and returned as an audio message, and the file is kept under `uploads/music/<login>/`.
+  Measured on the reference 16 GB card: a 30 s Russian song takes 12–15 s and peaks at 7.0 GB,
+  the first song after a container start takes ~170 s. Two rules come from measurement: lyrics
+  need `[verse]`/`[chorus]` structure (without it the same words produced no intelligible vocal,
+  0.00 word recall against 0.78–0.83 with it), and the duration must fit the lyric length — six
+  lines at 60 s made the planner emit an instrumental. The client adds the tags and refuses a
+  duration outside 10–600 s instead of clamping. On CPU hosts the same model runs only with
+  `MUSIC_ALLOW_CPU=1`: measured 74–77 s to load, ~90 s for a 10 s song and 15 GB of RAM, so a
+  30 s song is 4–5 minutes. The XL 4B tier does not fit a 16 GB card (CUDA OOM at a 15.8 GB
+  peak) and needs 24 GB. The web container now carries `ulimits: nofile: 65536`: its worker
+  exhausted the image's soft limit of 1024 after about 14 hours, after which every health check
+  failed with `Errno 24`. Details → [MUSIC.md](docs/MUSIC.md).
+
 - **A document request says what it is doing.** The chat status stopped at "Thinking…" while the
   model composed a `write_document` call: in the measured case an SVG cost 25 s of argument
   generation, and the tool itself then ran for 0.6 s, so a stage announced at execution time would

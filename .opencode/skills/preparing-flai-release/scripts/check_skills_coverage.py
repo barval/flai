@@ -59,6 +59,7 @@ TOOL_OWNER: dict[str, str] = {
     "net_ports": "net",
     "net_http": "net",
     "net_speed": "net",
+    "generate_music": "music",
 }
 
 # The same for a background-task capability.
@@ -95,6 +96,7 @@ CAPABILITY_TEXT: dict[str, tuple[str, str]] = {
     "image_gen": ("generate images", "генерирую изображения"),
     "image_edit": ("edit uploaded images", "редактирую загруженные изображения"),
     "video": ("create videos", "создаю видео"),
+    "music": ("compose music", "сочиняю музыку"),
     "voice": ("voice messages", "голосовые сообщения"),
     "audio": ("audio files", "аудиофайлы"),
     "camera": ("surveillance cameras", "камер видеонаблюдения"),

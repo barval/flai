@@ -3478,6 +3478,13 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, base._("Music generation failed", lang=lang), time.time() - started, lang
             )
+        finally:
+            # The sidecar keeps ~5.5 GB resident and has no unload endpoint; a
+            # restart is the only way to give the card back before chat returns.
+            try:
+                get_resource_manager().restart_music_container()
+            except Exception as exc:  # noqa: BLE001 - never fail the answer
+                self.logger.warning(f"Music VRAM release failed: {exc}")
 
         file_path = os.path.relpath(result["path"], self.app.config["UPLOAD_FOLDER"])
         file_name = os.path.basename(result["path"])

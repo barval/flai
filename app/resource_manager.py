@@ -1174,6 +1174,30 @@ class ResourceManager:
         logger.warning("Force-restarting LTX-Video container to free CUDA context")
         self._restart_ltx_container()
 
+    def restart_music_container(self) -> None:
+        """Restart flai-music to release the CUDA context it holds.
+
+        The sidecar has no unload endpoint, so a finished song leaves ~5.5 GB on
+        the card. Measured: a chat request after a song timed out at
+        ``ensure_vram_for`` with 10 259 MB free against the 14 165 MB the
+        multimodal model needs.
+        """
+        try:
+            result = subprocess.run(
+                ["docker", "restart", "flai-music"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode == 0:
+                logger.info("flai-music restarted to release GPU memory")
+            else:
+                logger.warning(f"Music restart failed (rc={result.returncode}): {result.stderr}")
+        except FileNotFoundError:
+            logger.error("Docker CLI not found in container — cannot restart flai-music")
+        except Exception as exc:  # noqa: BLE001 - best effort, never break a task
+            logger.warning(f"Music restart failed: {exc}")
+
     def _restart_whisper_container(self) -> None:
         """Restart flai-whisper to release the VRAM its CUDA context holds."""
         try:

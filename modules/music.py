@@ -54,6 +54,34 @@ def normalize_lyrics(lyrics: str) -> str:
     return f"[verse]\n{first}\n[chorus]\n{second}"
 
 
+def lyric_lines(lyrics: str) -> int:
+    """Count singable lines, ignoring structure tags and blanks."""
+    count = 0
+    for line in (lyrics or "").splitlines():
+        stripped = line.strip()
+        if not stripped or (stripped.startswith("[") and stripped.endswith("]")):
+            continue
+        count += 1
+    return count
+
+
+def plain_lyrics(lyrics: str) -> str:
+    """Lyrics without [verse]/[chorus] markers — what the person should read."""
+    kept = [
+        line
+        for line in (lyrics or "").splitlines()
+        if not (line.strip().startswith("[") and line.strip().endswith("]"))
+    ]
+    return "\n".join(kept).strip()
+
+
+def fit_duration(lyrics: str, requested: int, default: int = 30, per_line: int = 5) -> int:
+    """A duration that fits the words: ~5 s per line, never below the default."""
+    lines = lyric_lines(lyrics)
+    needed = max(default, lines * per_line)
+    return max(int(requested or 0), needed)
+
+
 class MusicModule:
     """Thin HTTP client for the ACE-Step REST API."""
 

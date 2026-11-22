@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from modules.music import MusicError, MusicModule, normalize_lyrics
+from modules.music import MusicError, MusicModule, fit_duration, normalize_lyrics, plain_lyrics
 
 
 class _Resp:
@@ -127,3 +127,17 @@ def test_music_vram_estimate_uses_the_measured_peak():
     assert music_vram_mb(30) == 6900
     assert music_vram_mb(60) > music_vram_mb(30)
     assert music_vram_mb(600) <= 8000
+
+
+def test_plain_lyrics_hide_the_structure_tags():
+    text = "[verse]\nНад рекой туман,\nтихий свет в окне.\n[chorus]\nЯ иду один."
+    shown = plain_lyrics(text)
+    assert "[verse]" not in shown and "[chorus]" not in shown
+    assert "Над рекой туман" in shown
+
+
+def test_duration_grows_with_the_lyric():
+    six = "\n".join(f"line {i}" for i in range(6))
+    twelve = "\n".join(f"line {i}" for i in range(12))
+    assert fit_duration(six, 30) == 30
+    assert fit_duration(twelve, 30) == 60

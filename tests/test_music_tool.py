@@ -76,3 +76,11 @@ def test_missing_module_is_refused():
     app.modules = {}
     answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="one\ntwo")
     assert answer.startswith("⚠️")
+
+
+def test_a_long_lyric_is_given_a_longer_song():
+    app = _App()
+    lyrics = "\n".join(f"строка {i}" for i in range(14))
+    _exec_generate_music(_ctx(app), prompt="pop", lyrics=lyrics, duration_s=30)
+    request_data = app.request_queue.calls[0][0][2]
+    assert request_data["duration"] >= 70, "14 lines need more than 30 seconds"

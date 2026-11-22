@@ -3423,6 +3423,7 @@ class RedisRequestQueue:
             task.get("lang", "ru"),
             data.get("response_style", "neutral"),
             task=task,
+            style=data.get("prompt") or "",
         )
 
     def _process_music_gen_task(
@@ -3435,6 +3436,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        style: str = "",
     ) -> dict[str, Any]:
         """Render one song with the ACE-Step sidecar and answer with the file."""
         from pathlib import Path
@@ -3463,11 +3465,14 @@ class RedisRequestQueue:
         started = time.time()
         try:
             result = module.generate(
-                query,
+                style or query,
                 lyrics,
                 duration_s=duration or None,
                 language="en" if lang == "en" else "ru",
-                out_dir=Path(self.app.config["UPLOAD_FOLDER"]) / "music" / str(user_id),
+                # Attachments live in <upload>/<session>/<file>: the /api/files
+                # route resolves ownership from exactly two path parts. A
+                # music/<user>/<file> path made the player and the download fail.
+                out_dir=Path(self.app.config["UPLOAD_FOLDER"]) / session_id,
             )
         except MusicError:
             return self._build_error_response(

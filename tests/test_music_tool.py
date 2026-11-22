@@ -47,6 +47,16 @@ def test_a_song_is_queued_not_rendered():
     assert kwargs.get("task_type") == "music_gen"
 
 
+def test_the_message_quotes_the_person_not_the_style_prompt():
+    app = _App()
+    ctx = _ctx(app)
+    ctx["message_text"] = "Сочини песню про дождь в ночном городе"
+    _exec_generate_music(ctx, prompt="night city rain, female vocal", lyrics="дождь\nгород", duration_s=30)
+    request_data = app.request_queue.calls[0][0][2]
+    assert request_data["text"] == "Сочини песню про дождь в ночном городе"
+    assert request_data["prompt"] == "night city rain, female vocal"
+
+
 def test_missing_lyrics_is_refused():
     app = _App()
     answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="   ")

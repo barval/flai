@@ -86,9 +86,17 @@ def test_a_long_lyric_is_given_a_longer_song():
     assert request_data["duration"] >= 60, "10 lines need more than 30 seconds"
 
 
-def test_more_than_twelve_lines_is_refused():
+def test_sixteen_lines_are_allowed():
     app = _App()
-    lyrics = "\n".join(f"line {i}" for i in range(13))
+    lyrics = "\n".join(f"line {i}" for i in range(16))
+    answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics=lyrics)
+    assert "⚠️" not in answer
+    assert app.request_queue.calls[0][0][2]["duration"] >= 96
+
+
+def test_a_text_that_cannot_fit_the_largest_song_is_refused():
+    app = _App()
+    lyrics = "\n".join(f"line {i}" for i in range(110))
     answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics=lyrics)
     assert answer.startswith("⚠️")
     assert not app.request_queue.calls

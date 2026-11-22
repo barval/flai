@@ -55,8 +55,8 @@ Two rules come from measurement, not from taste:
   them the words came back at 0.78–0.83 recall.
 - **Duration must fit the lyric length.** Six lines at 30 s sang the words; ten lines at
   45 s scored 0.04–0.50, and six lines at 60 s made the planner label the track an
-  instrumental and drop the vocals. At most 12 lines: measured, a 16-line English lyric made the model repeat the chorus and drop
-verses, so a longer text is refused with a request to split it. Roughly 6 seconds per line: measured, a 16-line lyric at 5 s per line ended exactly at the
+  instrumental and drop the vocals. Quality falls with length, and the language matters: a 16-line Russian lyric sang end to end,
+the same count in English looped the chorus and dropped verses. Roughly 6 seconds per line: measured, a 16-line lyric at 5 s per line ended exactly at the
 requested 80 s and cut the last phrase.
 
 The client adds structure tags when the text has none and refuses a duration above

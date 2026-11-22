@@ -829,8 +829,15 @@ resolve_stack() {
     fi
 
     if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        local ram_gb disk_gb
+        ram_gb=$(awk '/MemTotal/{printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo "?")
+        disk_gb=$(df -Pk /home 2>/dev/null | awk 'NR==2{printf "%.0f", $4/1048576}')
         error "Музыка на CPU-хосте идёт 4–5 минут на 30-секундную песню и занимает ~15 ГБ RAM."
-        error "Это конкурирует с основной моделью, поэтому только осознанно: MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
+        error "Нужно также ~23 ГБ диска: образ 11,8 ГБ и веса 11 ГБ."
+        error "Сейчас: RAM ${ram_gb} ГБ всего, свободно на /home ${disk_gb} ГБ."
+        error "Основная модель на CPU занимает ещё ~11 ГБ, поэтому музыка идёт только осознанно:"
+        error "  MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
+        error "Если места на диске меньше 25 ГБ, сначала освободите его: иначе образ и веса не встанут."
         exit 1
     fi
 }

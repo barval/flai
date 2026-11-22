@@ -1490,6 +1490,15 @@ footer {
     margin-top: 0.2rem;
 }
 
+.song-lyrics {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-color, #ddd);
+    color: var(--text-secondary, #555);
+    line-height: 1.5;
+    font-style: italic;
+}
+
 .download-link-inline {
     font-size: 1.2rem;
     text-decoration: none;
@@ -7252,6 +7261,15 @@ footer {
     font-family: monospace;
     display: block;
     margin-top: 0.2rem;
+}
+
+.song-lyrics {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-color, #ddd);
+    color: var(--text-secondary, #555);
+    line-height: 1.5;
+    font-style: italic;
 }
 
 .download-link-inline {
@@ -14766,6 +14784,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'MCP': "MCP",
     'Models and context': "Models and context",
     'Media generation': "Media generation",
+    'Music generation': "Music generation",
     'Deep analysis': "Deep analysis",
     'Voice': "Voice",
     'Memory and history': "Memory and history",
@@ -14822,6 +14841,13 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Largest accepted HTTP request body (MB)': "Largest accepted HTTP request body (MB)",
     'Enable background tasks': "Enable background tasks",
     'Pure execution budget per task (seconds)': "Pure execution budget per task (seconds)",
+    'Address of the music sidecar (empty disables music)': "Address of the music sidecar (empty disables music)",
+    'Time budget for one song (seconds)': "Time budget for one song (seconds)",
+    'DiT model the sidecar renders with': "DiT model the sidecar renders with",
+    'Language model that plans the song': "Language model that plans the song",
+    'Song length when the lyrics do not decide it (seconds)': "Song length when the lyrics do not decide it (seconds)",
+    'Longest accepted song (seconds)': "Longest accepted song (seconds)",
+    'Output format: wav, mp3, flac, opus or aac': "Output format: wav, mp3, flac, opus or aac",
     'Hard ceiling on the plan length': "Hard ceiling on the plan length",
     'Accepted plan rewrites per task': "Accepted plan rewrites per task",
     'Passing media steps between plan reviews': "Passing media steps between plan reviews",

@@ -87,7 +87,8 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
   `with-music` profile: a 30 s Russian song takes 12–15 s on a 16 GB card and peaks at 7 GB.
   Lyrics get `[verse]`/`[chorus]` automatically — measured, without that structure the same words
   came back unintelligible. On a CPU host it is opt-in (`MUSIC_ALLOW_CPU=1`) and takes 4–5
-  minutes per song. → [MUSIC.md](docs/MUSIC.md)
+  minutes per song. Songs arrive as mp3 with the lyrics under the player, and the format is
+  a panel setting. → [MUSIC.md](docs/MUSIC.md)
 
 - **The assistant can change what it wrote — and draw.** A document it created can be edited in
   place and rolled back to an earlier state: the last ten versions are kept, a restore is itself a

@@ -254,7 +254,7 @@ def test_page_counter_reads_the_field_the_backend_sends():
     assert payload, "queue.py no longer publishes crawl_page with a pages field"
 
     src = EVENTS_JS.read_text(encoding="utf-8")
-    call = re.search(r"getStageLabel\(data\.stage,\s*([^)]*)\)\)", src)
+    call = re.search(r"getStageLabel\(data\.stage,\s*([^)]*)\)", src)
     assert call, "onTaskProgress no longer passes a counter to getStageLabel"
     chain = call.group(1)
     assert f"data.{payload.group(1)}" in chain, (

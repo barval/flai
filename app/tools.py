@@ -177,7 +177,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "Create a sung song from lyrics. Use when the person asks for a song, a track, "
                 "or to sing given words. The lyrics must be the words to sing; add structure "
                 "tags [verse]/[chorus] when you write them. Duration fits the lyric length: "
-                "about 3-5 seconds per line (6 lines ~ 30 s)."
+                "about 6 seconds per line."
             ),
             "parameters": {
                 "type": "object",

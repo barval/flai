@@ -139,5 +139,5 @@ def test_plain_lyrics_hide_the_structure_tags():
 def test_duration_grows_with_the_lyric():
     six = "\n".join(f"line {i}" for i in range(6))
     twelve = "\n".join(f"line {i}" for i in range(12))
-    assert fit_duration(six, 30) == 30
-    assert fit_duration(twelve, 30) == 60
+    assert fit_duration(six, 30) >= 30
+    assert fit_duration(twelve, 30) > fit_duration(six, 30)

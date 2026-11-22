@@ -117,6 +117,18 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "MAX_CONTENT_LENGTH_MB",
         ],
     ),
+    "music": (
+        "Music generation",
+        [
+            "MUSIC_URL",
+            "MUSIC_TIMEOUT_S",
+            "MUSIC_MODEL",
+            "MUSIC_LM_MODEL",
+            "MUSIC_DEFAULT_DURATION_S",
+            "MUSIC_MAX_DURATION_S",
+            "MUSIC_FORMAT",
+        ],
+    ),
     "tasks": (
         "Tasks",
         [
@@ -468,6 +480,7 @@ _ENUMS: dict[str, tuple[str, ...]] = {
     "DEPTH_LEVEL": ("min", "norm", "max"),
     "DEPTH_VERIFY": ("off", "final", "each"),
     "VRAM_CO_RESIDENCY": ("auto", "off"),
+    "MUSIC_FORMAT": ("wav", "mp3", "flac", "opus", "aac"),
 }
 
 
@@ -544,6 +557,13 @@ DESCRIPTIONS: dict[str, str] = {
     "MAX_UPLOAD_STORAGE_MB": "Default upload limit per user (MB), overridable in Users",
     "MAX_EXTENSION_LENGTH": "Longest accepted file extension",
     "MAX_CONTENT_LENGTH_MB": "Largest accepted HTTP request body (MB)",
+    "MUSIC_URL": "Address of the music sidecar (empty disables music)",
+    "MUSIC_TIMEOUT_S": "Time budget for one song (seconds)",
+    "MUSIC_MODEL": "DiT model the sidecar renders with",
+    "MUSIC_LM_MODEL": "Language model that plans the song",
+    "MUSIC_DEFAULT_DURATION_S": "Song length when the lyrics do not decide it (seconds)",
+    "MUSIC_MAX_DURATION_S": "Longest accepted song (seconds)",
+    "MUSIC_FORMAT": "Output format: wav, mp3, flac, opus or aac",
     "TASKS_ENABLED": "Enable background tasks",
     "TASK_TOTAL_BUDGET_S": "Pure execution budget per task (seconds)",
     "TASK_MAX_STEPS": "Hard ceiling on the plan length",

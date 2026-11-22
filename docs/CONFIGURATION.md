@@ -65,6 +65,16 @@ WAN_VIDEO_FLOW_SHIFT=3.0
 WAN_VIDEO_ALLOW_CPU=0           # 1 = allow Wan on a CPU-only host (very slow)
 ```
 
+**Music generation (ACE-Step 1.5 sidecar):**
+```bash
+MUSIC_URL=http://flai-music:8001  # empty keeps the module disabled (profile with-music)
+MUSIC_TIMEOUT_S=900               # the first song after a container start takes ~170 s
+MUSIC_MODEL=acestep-v15-turbo     # 2B DiT; the XL 4B tier is a separate download
+MUSIC_LM_MODEL=acestep-5Hz-lm-0.6B
+MUSIC_DEFAULT_DURATION_S=30       # 3-5 seconds of audio per lyric line
+MUSIC_MAX_DURATION_S=600          # a longer request is refused, never clamped
+```
+
 Container-side limits: `WAN_CLI_TIMEOUT` (1800 s GPU, 7200 s CPU), `WAN_OFFLOAD_BELOW_VRAM_MB`
 (12000 — below this the umt5 encoder is streamed from RAM), `SD_CLI_TIMEOUT` (image generation).
 

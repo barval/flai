@@ -23,7 +23,7 @@ Contributor guide for FLAI: where the code lives, how to run the test suite, and
 
 ```bash
 ruff check .
-mypy app/ modules/               # CI runs with `|| true` — does not block
+mypy app/ modules/               # blocks CI; the silenced backlog lives in pyproject.toml
 ```
 
 ## Dependencies and the lock file

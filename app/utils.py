@@ -514,7 +514,15 @@ def _load_skill_catalog(lang: str = "ru") -> str:
     try:
         from app.skills import catalog
 
-        lines = catalog(lang)
+        try:
+            from app.tools import get_tool_definitions
+
+            # A skill whose every tool is absent from the live catalogue cannot run —
+            # network diagnostics without its sidecar is the case this exists for.
+            available = {item["function"]["name"] for item in get_tool_definitions(lang)}
+        except Exception:  # noqa: BLE001 - no catalogue means no filtering, not no skills
+            available = None
+        lines = catalog(lang, available=available)
     except Exception:
         current_app.logger.warning("Skill catalog could not be loaded", exc_info=True)
         return ""

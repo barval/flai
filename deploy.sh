@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v13.5 — Single-Server Deployment Script
+# FLAI v13.6 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -202,6 +202,12 @@ enable_env_features() {
     else
         disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
         disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
+    fi
+    if [[ "$WITH_MUSIC" == "true" ]]; then
+        set_env_key_value MUSIC_URL http://flai-music:8001
+        info "Music generation enabled (ACE-Step 1.5, flai-music)"
+    else
+        set_env_key_value MUSIC_URL ""
     fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then
@@ -783,6 +789,7 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
     [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
+    [[ "$WITH_MUSIC" == "true" ]] && PROFILES="$PROFILES --profile with-music"
 
     # Platform: --platform/--gpu-*, else FLAI_PLATFORM from the environment, else
     # what the host reports.
@@ -835,6 +842,12 @@ resolve_stack() {
     if [[ "$VIDEO_BACKEND" == "wan" && ( "$COMPOSE_FILE" == *cpu.yml || "$COMPOSE_FILE" == *amd.yml || "$COMPOSE_FILE" == *intel.yml ) ]]; then
         error "Wan 2.2 needs a GPU: a 5-second 480p clip takes ~90 minutes on CPU and exceeds the container RAM."
         error "Use --with-video (LTX-Video) on CPU hosts, or WAN_VIDEO_ALLOW_CPU=1 in .env to attempt it anyway."
+        exit 1
+    fi
+
+    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        error "Music on a CPU host takes 4–5 minutes per 30-second song and ~15 GB of RAM."
+        error "That competes with the main model, so it is opt-in: MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
         exit 1
     fi
 }
@@ -951,7 +964,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v13.5 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v13.6 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -967,7 +980,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v13.5 — Deployment Script
+FLAI v13.6 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -986,6 +999,8 @@ Options:
                       mtr, nmap, iperf3); tools are then granted per user in the panel
   --with-search       Deploy SearXNG for web search (default: disabled)
   --with-crawler      Deploy Crawl4AI for deep site reading (default: disabled)
+  --with-music        Deploy ACE-Step 1.5 music generation (songs from lyrics)
+                      (adds the flai-music container; ~11 GB of weights on first start)
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
@@ -1035,6 +1050,7 @@ VOICE_KOKORO=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_MUSIC=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
@@ -1055,6 +1071,7 @@ for arg in "$@"; do
         --with-image-gen)                WITH_IMAGE_GEN=true ;;
         --with-video)                    WITH_VIDEO=true; VIDEO_USE_LTX=true ;;
         --with-video-wan)                WITH_VIDEO=true; VIDEO_USE_WAN=true ;;
+        --with-music)                    WITH_MUSIC=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
@@ -1092,7 +1109,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v13.5 — Deployment Script"
+    echo "  FLAI v13.6 — Deployment Script"
     echo "============================================"
     echo ""
 

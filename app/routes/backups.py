@@ -562,7 +562,9 @@ def _slm_daemon_db_bytes() -> bytes | None:
         logger.warning(f"SLM daemon DB backup via docker failed: {e}")
         return None
     if result.returncode != 0:
-        logger.warning(f"SLM daemon DB backup via docker failed: {result.stderr[:500]}")
+        # stderr is bytes on purpose: stdout is the database file and must stay binary.
+        detail = result.stderr[:500].decode("utf-8", "replace")
+        logger.warning(f"SLM daemon DB backup via docker failed: {detail}")
         return None
     return result.stdout
 

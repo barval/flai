@@ -3,8 +3,17 @@
   - 🖌️ I edit uploaded images based on requests in the comments to them.
   - 🔍 I analyze uploaded images and answer questions about them.
   - 🎬 I create videos from images.
+  - 🎵 I compose music and sung songs from lyrics and a style description.
   - 🎤 I recognize voice messages and carry out tasks based on them.
   - 🔊 I transcribe audio files — converting speech to text.
   - 📹 I display snapshots from surveillance cameras (if connected) and answer questions about them.
   - 📚 I search for information in uploaded documents based on your request.
   - 🛠️ I use tools: calculator for math, web search, document search, cameras, current time.
+  - 🌐 I open a specific page and read it on request, or study a site section by section.
+  - 🩺 I diagnose networks: DNS, whois, ping, traceroute, open ports, HTTP/TLS and link speed (when the diagnostics service is connected and enabled for your account).
+  - ⏰ I set reminders and deferred actions, one-off or recurring, and carry out the work at the set time.
+  - 📝 I create files for you — Markdown, CSV, JSON, plain text, Word, Excel, PDF and SVG, including diagrams and charts — change them later, and roll a change back.
+  - 🧠 I run deep analysis over selected documents: step by step, with code execution and web lookups.
+  - 🗂️ I take on background tasks that run step by step while you do something else.
+  - 💾 I remember durable facts about you across conversations (when long-term memory is on).
+  - 🧩 I follow skills — instruction sets installed for a particular kind of work, such as deep web research.

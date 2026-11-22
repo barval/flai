@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v13.5 — Скрипт развёртывания на одном сервере
+# FLAI v13.6 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -205,6 +205,12 @@ enable_env_features() {
     else
         disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
         disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
+    fi
+    if [[ "$WITH_MUSIC" == "true" ]]; then
+        set_env_key_value MUSIC_URL http://flai-music:8001
+        info "Генерация музыки включена (ACE-Step 1.5, flai-music)"
+    else
+        set_env_key_value MUSIC_URL ""
     fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then
@@ -767,6 +773,7 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
     [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
+    [[ "$WITH_MUSIC" == "true" ]] && PROFILES="$PROFILES --profile with-music"
 
     # Платформа: --platform/--gpu-*, иначе FLAI_PLATFORM из окружения, иначе автоопределение.
     local platform="${FLAI_PLATFORM:-auto}"
@@ -818,6 +825,12 @@ resolve_stack() {
     if [[ "$VIDEO_BACKEND" == "wan" && ( "$COMPOSE_FILE" == *cpu.yml || "$COMPOSE_FILE" == *amd.yml || "$COMPOSE_FILE" == *intel.yml ) ]]; then
         error "Wan 2.2 требует GPU: 5-секундный клип 480p на CPU идёт ~90 минут и не влезает в RAM контейнера."
         error "На CPU используйте --with-video (LTX-Video) или WAN_VIDEO_ALLOW_CPU=1 в .env, чтобы попробовать всё равно."
+        exit 1
+    fi
+
+    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+        error "Музыка на CPU-хосте идёт 4–5 минут на 30-секундную песню и занимает ~15 ГБ RAM."
+        error "Это конкурирует с основной моделью, поэтому только осознанно: MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
         exit 1
     fi
 }
@@ -944,7 +957,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v13.5 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v13.6 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -960,7 +973,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v13.5 — Скрипт развёртывания
+FLAI v13.6 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -979,6 +992,8 @@ FLAI v13.5 — Скрипт развёртывания
                       mtr, nmap, iperf3); инструменты выдаются пользователю в панели
   --with-search       Развернуть SearXNG для веб-поиска (по умолчанию: выключено)
   --with-crawler      Развернуть Crawl4AI для глубокого чтения сайтов (по умолчанию: выключено)
+  --with-music        Развернуть генерацию музыки ACE-Step 1.5 (песни по тексту)
+                      (контейнер flai-music; ~11 ГБ весов при первом запуске)
   --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: выключено, используйте флаг для включения)
   --cpu               Принудительный режим только CPU (GPU не требуется)
@@ -1024,6 +1039,7 @@ VOICE_KOKORO=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_MUSIC=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
@@ -1044,6 +1060,7 @@ for arg in "$@"; do
         --with-image-gen)                WITH_IMAGE_GEN=true ;;
         --with-video)                    WITH_VIDEO=true; VIDEO_USE_LTX=true ;;
         --with-video-wan)                WITH_VIDEO=true; VIDEO_USE_WAN=true ;;
+        --with-music)                    WITH_MUSIC=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
@@ -1081,7 +1098,7 @@ VOICE_BACKEND=""
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v13.5 — Скрипт развёртывания"
+    echo "  FLAI v13.6 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

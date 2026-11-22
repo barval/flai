@@ -18,6 +18,13 @@ services:
     container_name: flai-web
     ports:
       - "5000:5000"
+    # The worker keeps long-lived SSE and queue connections; the image's soft
+    # limit of 1024 was exhausted after ~14 h (Errno 24) and every health check
+    # then failed. The leak is not fixed, the headroom is.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     depends_on:
       - redis
       - postgres
@@ -230,6 +237,53 @@ services:
           memory: 8G
     profiles:
       - with-video
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # ACE-STEP 1.5 (Optional - Music Generation)
+  # ============================================================
+  music:
+    image: flai-music:cuda
+    build:
+      context: ./services/music
+      dockerfile: Dockerfile
+    container_name: flai-music
+    volumes:
+      - ./services/music/models:/app/checkpoints:rw
+    environment:
+      - ACESTEP_CHECKPOINTS_DIR=/app/checkpoints
+      - ACESTEP_CONFIG_PATH=acestep-v15-turbo
+      - ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B
+      - ACESTEP_LM_BACKEND=pt
+      - ACESTEP_DEVICE=cuda
+      - ACESTEP_QUEUE_WORKERS=1
+      - HF_HOME=/app/checkpoints/.hf
+      - ACESTEP_API_HOST=0.0.0.0
+      - PORT=8001
+    # `deploy.resources.reservations.devices` is ignored by `docker compose up`
+    # without --compatibility; `gpus` is honoured. Measured: without it the
+    # container ran the model on CPU (torch.cuda.is_available() False) and a song
+    # took 168 s instead of 12 s.
+    gpus: all
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+    profiles:
+      - with-music
     logging:
       driver: "json-file"
       options:

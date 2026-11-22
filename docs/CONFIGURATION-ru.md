@@ -65,6 +65,16 @@ WAN_VIDEO_FLOW_SHIFT=3.0
 WAN_VIDEO_ALLOW_CPU=0           # 1 = разрешить Wan на хосте только с CPU (очень медленно)
 ```
 
+**Генерация музыки (сайдкар ACE-Step 1.5):**
+```bash
+MUSIC_URL=http://flai-music:8001  # пусто — модуль выключен (профиль with-music)
+MUSIC_TIMEOUT_S=900               # первая песня после старта контейнера идёт ~170 с
+MUSIC_MODEL=acestep-v15-turbo     # DiT 2B; XL 4B — отдельная загрузка
+MUSIC_LM_MODEL=acestep-5Hz-lm-0.6B
+MUSIC_DEFAULT_DURATION_S=30       # 3-5 секунд звука на строку текста
+MUSIC_MAX_DURATION_S=600          # более длинный запрос отклоняется, а не обрезается
+```
+
 Лимиты на стороне контейнеров: `WAN_CLI_TIMEOUT` (1800 с на GPU, 7200 с на CPU),
 `WAN_OFFLOAD_BELOW_VRAM_MB` (12000 — ниже этого порога энкодер umt5 стримится из RAM),
 `SD_CLI_TIMEOUT` (генерация изображений).

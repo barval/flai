@@ -172,6 +172,36 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "generate_music",
+            "description": (
+                "Create a sung song from lyrics. Use when the person asks for a song, a track, "
+                "or to sing given words. The lyrics must be the words to sing; add structure "
+                "tags [verse]/[chorus] when you write them. Duration fits the lyric length: "
+                "about 3-5 seconds per line (6 lines ~ 30 s)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Style and arrangement, e.g. 'russian pop ballad, warm female vocal, acoustic guitar'",
+                    },
+                    "lyrics": {
+                        "type": "string",
+                        "description": "The words to sing, with [verse]/[chorus] structure tags",
+                    },
+                    "duration_s": {
+                        "type": "integer",
+                        "description": "Song length in seconds, 10-600. Match it to the lyrics: 3-5 s per line.",
+                    },
+                },
+                "required": ["prompt", "lyrics"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the internet for up-to-date information: news, weather, exchange rates, prices, latest events, releases, statistics. Use when the user needs fresh information that is not in their documents.",
             "parameters": {
@@ -391,7 +421,21 @@ _IN_MINUTES_SCHEMA = {
 _REPEAT_SCHEMA = {
     "type": "string",
     "enum": ["once", "minutes", "daily", "weekly", "monthly"],
-    "description": "Default once. daily/weekly/monthly repeat at the same local time.",
+    "description": (
+        "Default once. daily/weekly/monthly repeat at the same local time; weekly repeats "
+        "on the weekdays named in `weekdays`, or on the day of `when` when none are given."
+    ),
+}
+
+_WEEKDAYS_SCHEMA = {
+    "type": "array",
+    "items": {"type": "integer", "minimum": 1, "maximum": 7},
+    "description": (
+        "For repeat=weekly when several days were named: the days as ISO numbers, "
+        "1 = Monday … 7 = Sunday. One item covers the whole set — 'every Tuesday and "
+        "Thursday at 19:45' is weekdays [2, 4], not two reminders. Omit it when the "
+        "request names a single day: the day of `when` is used."
+    ),
 }
 
 _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
@@ -412,6 +456,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                     "text": {"type": "string", "description": "What to send at that moment"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
+                    "weekdays": _WEEKDAYS_SCHEMA,
                     "every_minutes": {
                         "type": "integer",
                         "description": "For repeat=minutes: the interval, at least 15",
@@ -441,6 +486,7 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
                     "goal": {"type": "string", "description": "What has to be done, in full"},
                     "title": {"type": "string", "description": "Short label for the list"},
                     "repeat": _REPEAT_SCHEMA,
+                    "weekdays": _WEEKDAYS_SCHEMA,
                     "every_minutes": {
                         "type": "integer",
                         "description": "For repeat=minutes: the interval, at least 15",
@@ -499,7 +545,8 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
             "name without a path; the extension follows the format. For a table use format csv "
             "or xlsx with rows (a list of rows, each a list of cells), never a hand-built string. "
             "Use docx for a document someone will edit in Word, pdf for one that must look the "
-            "same everywhere; headings are written as '# ', '## ', '### ' and bullets as '- '."
+            "same everywhere; headings are written as '# ', '## ', '### ' and bullets as '- '. "
+            "Use svg for vector graphics — diagrams, charts, icons — with the SVG markup as content."
         ),
         "parameters": {
             "type": "object",
@@ -508,11 +555,12 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
                 "content": {"type": "string", "description": "The whole text of the document"},
                 "format": {
                     "type": "string",
-                    "enum": ["md", "csv", "json", "txt", "docx", "xlsx", "pdf"],
+                    "enum": ["md", "csv", "json", "txt", "svg", "docx", "xlsx", "pdf"],
                     "description": (
-                        "md for prose, csv with rows, json (must parse), txt plain, docx a Word "
-                        "document (text with headings and bullets), xlsx a spreadsheet (rows or "
-                        "sheets), pdf a fixed-layout document"
+                        "md for prose, csv with rows, json (must parse), txt plain, svg vector "
+                        "graphics (diagrams, charts, icons), docx a Word document (text with "
+                        "headings and bullets), xlsx a spreadsheet (rows or sheets), pdf a "
+                        "fixed-layout document"
                     ),
                 },
                 "rows": {
@@ -547,6 +595,71 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
                 },
             },
             "required": ["name"],
+        },
+    },
+}
+
+EDIT_DOCUMENT_TOOL = "edit_document"
+RESTORE_DOCUMENT_VERSION_TOOL = "restore_document_version"
+
+_EDIT_DOCUMENT_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": EDIT_DOCUMENT_TOOL,
+        "description": (
+            "Replace the contents of a document this assistant wrote. Only a generated "
+            "document can be changed: an uploaded file is never modified in place, because "
+            "its bytes may be shared — write a NEW document from it with write_document "
+            "instead. The format stays what it was and the whole new body is passed, not a "
+            "diff. The previous state is kept as a version, so the change can be undone."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "type": "string",
+                    "description": "The document's display name as the user sees it, e.g. 'October report.md'",
+                },
+                "content": {"type": "string", "description": "The whole new text of the document"},
+                "rows": {
+                    "type": "array",
+                    "description": "For a csv or xlsx document: the replacement rows",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                },
+                "sheets": {
+                    "type": "array",
+                    "description": "For an xlsx document with several sheets: each {name, rows}",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+                        },
+                        "required": ["name", "rows"],
+                    },
+                },
+            },
+            "required": ["document"],
+        },
+    },
+}
+
+_RESTORE_DOCUMENT_VERSION_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": RESTORE_DOCUMENT_VERSION_TOOL,
+        "description": (
+            "Bring back an earlier version of a document this assistant wrote. Use it when the "
+            "user says the last change was wrong. Omit version to undo the most recent edit; "
+            "history is append-only, so a restore is itself a new version."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string", "description": "The document's display name"},
+                "version": {"type": "integer", "description": "The version to bring back; omit for the previous one"},
+            },
+            "required": ["document"],
         },
     },
 }
@@ -699,7 +812,11 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
     return (
         list(definitions)
-        + [_WRITE_DOCUMENT_DEFINITION]
+        + [
+            _WRITE_DOCUMENT_DEFINITION,
+            _EDIT_DOCUMENT_DEFINITION,
+            _RESTORE_DOCUMENT_VERSION_DEFINITION,
+        ]
         + _scheduler_definitions()
         + skill_tool_definitions()
         + mcp_tool_definitions()
@@ -1431,6 +1548,10 @@ def _schedule_refusal(language: str, refusal) -> str:
             )
         if refusal.code == "repeat_unclear":
             return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
+        if refusal.code == "weekdays_unclear":
+            return "⚠️ " + str(_("I could not tell which weekdays. Name them as 1 = Monday … 7 = Sunday"))
+        if refusal.code == "weekdays_not_weekly":
+            return "⚠️ " + str(_("Several weekdays only make sense for a weekly schedule"))
         if refusal.code == "in_the_past":
             return "⚠️ " + str(_("That time has already passed: {when}. When should it happen?")).format(
                 when=refusal.params.get("when").strftime("%Y-%m-%d %H:%M")
@@ -1495,7 +1616,8 @@ def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
     try:
         from app.tasks.events import publish_task_update
 
-        publish_task_update(current_app, task)
+        if task is not None:
+            publish_task_update(current_app, task)
     except Exception:  # noqa: BLE001 - a live view is advisory, never fatal
         current_app.logger.debug("could not publish the new task")
     current_app.logger.info(f"service run started task {task_id} ({prefixed})")
@@ -1531,6 +1653,7 @@ def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
             every_minutes=kw.get("every_minutes"),
             zone_name=zone_name,
             in_minutes=kw.get("in_minutes"),
+            weekdays=kw.get("weekdays"),
         )
     except scheduler_tools.ScheduleRefusalError as refusal:
         return _schedule_refusal(language, refusal)
@@ -1556,9 +1679,54 @@ def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
     return _exec_schedule(ctx, "action", **kw)
 
 
+def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
+    """Queue a song and answer with a sentence the model can repeat."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    language = str(ctx.get("lang") or "ru")
+    app = ctx.get("app") or current_app
+    module = (getattr(app, "modules", {}) or {}).get("music")
+    if module is None:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music generation module unavailable"))
+    login = str(ctx.get("user_id") or "")
+    session_id = str(ctx.get("current_session_id") or "")
+    if not login or not session_id:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music generation module unavailable"))
+
+    prompt = str(kw.get("prompt") or "").strip() or "pop song"
+    lyrics = str(kw.get("lyrics") or "").strip()
+    if not lyrics:
+        with force_locale(language):
+            return "⚠️ " + str(_("Music needs the lyrics to sing"))
+    try:
+        duration = int(kw.get("duration_s") or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    duration = duration or module.default_duration_s
+    if duration < 10 or duration > module.max_duration_s:
+        with force_locale(language):
+            return "⚠️ " + str(_("A song lasts from 10 to 600 seconds"))
+
+    app.request_queue.add_request(
+        login,
+        session_id,
+        {"type": "music_gen", "text": prompt, "lyrics": lyrics, "duration": duration,
+         "preview": (prompt[:50] + "...") if prompt else "Music"},
+        int(ctx.get("user_class") or 2),
+        language,
+        task_type="music_gen",
+    )
+    with force_locale(language):
+        return str(_("Music is being created and will arrive as a separate message"))
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
+    "generate_music": lambda ctx, **kw: _exec_generate_music(ctx, **kw),
     "web_search": lambda ctx, **kw: _exec_web_search(ctx, kw.get("query", ""), kw.get("lang", "ru")),
     "read_page": lambda ctx, **kw: _exec_read_page(ctx, kw.get("url", "")),
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
@@ -1568,6 +1736,8 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
     WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    EDIT_DOCUMENT_TOOL: lambda ctx, **kw: _exec_edit_document(ctx, **kw),
+    RESTORE_DOCUMENT_VERSION_TOOL: lambda ctx, **kw: _exec_restore_document_version(ctx, **kw),
     "start_task": lambda ctx, **kw: _exec_start_task(ctx, **kw),
     "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
     "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
@@ -1597,7 +1767,10 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
     with force_locale(lang):
         messages = {
             "empty": _("There is nothing to write: the content is empty"),
-            "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx or pdf"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, svg, docx, xlsx or pdf"),
+            "argument_markup": _(
+                "The arguments carry XML markup instead of plain values. Send the call again with JSON values only."
+            ),
             "too_large": _("The document is too large (limit {limit} KB)").format(
                 limit=documents_write.MAX_CONTENT_BYTES // 1024
             ),
@@ -1607,6 +1780,9 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
             "name": _("The document name is not usable: {detail}"),
             "csv_rows": _("A table needs rows: a list of rows, each a list of cells"),
             "append_binary": _("Only text documents can grow: write a new file instead of appending"),
+            "append_svg": _("An SVG cannot be appended to: write a new file or edit the existing one"),
+            "svg_invalid": _("The SVG is not well-formed XML: {detail}"),
+            "svg_unsafe": _("The SVG contains something unsafe: {detail}"),
             "too_large_binary": _("The document is too large to render ({detail} bytes)"),
             "pdf_font": _("The PDF renderer has no font with Cyrillic on this installation"),
             "too_many_sheets": _("Too many sheets in one workbook (max {detail})"),
@@ -1614,6 +1790,15 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
             "too_many_columns": _("Too many columns in one row (max {detail})"),
             "bad_rows": _("The rows are not a list of rows"),
             "bad_sheets": _("The sheets are not a list of {name, rows} objects"),
+            "target_missing": _("Which document? Name it as it appears in your documents"),
+            "not_found": _("There is no document named {detail}"),
+            "not_generated": _(
+                "Only a document this assistant wrote can be edited: {detail} is an upload —"
+                " make a new document from it instead"
+            ),
+            "ambiguous": _("More than one document matches {detail}; name one exactly"),
+            "no_versions": _("There is no earlier version of {detail}"),
+            "version_not_found": _("There is no version {detail} of that document"),
         }
         text = messages.get(code, _("The document could not be written"))
         if "{detail}" in text:
@@ -1640,7 +1825,9 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
             login,
             str(kw.get("name", "")),
             content=str(kw.get("content") or ""),
-            fmt=str(kw.get("format") or "md"),
+            # An absent format is inferred by the writer (from a .svg name); passing
+            # "md" here would make "no format" indistinguishable from "markdown".
+            fmt=str(kw.get("format") or ""),
             rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
             append=bool(kw.get("append")),
             sheets=kw.get("sheets") if isinstance(kw.get("sheets"), list) else None,
@@ -1654,9 +1841,95 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
 
     with force_locale(lang):
         size_kb = max(1, round(written.size / 1024))
-        return str(
+        fmt = str(kw.get("format") or "md").strip().lower().lstrip(".")
+        # The server renames instead of overwriting. Measured: the model then told the
+        # user the name it asked for, though the result named the real one — so the
+        # result now says why the name changed, not only what it became.
+        lead = ""
+        if written.requested_name and written.requested_name != written.filename:
+            lead = (
+                str(
+                    _('The name "{requested}" was already taken, so the file was saved as "{name}".').format(
+                        requested=written.requested_name, name=written.filename
+                    )
+                )
+                + " "
+            )
+        if fmt == "svg":
+            return lead + str(
+                _("Saved as {name} ({size} KB) in your documents. SVG documents are not indexed.").format(
+                    name=written.filename, size=size_kb
+                )
+            )
+        return lead + str(
             _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
                 name=written.filename, size=size_kb
+            )
+        )
+
+
+def _exec_edit_document(ctx: dict[str, Any], **kw: Any) -> str:
+    """Replace a generated document's body; the previous state stays as a version."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.edit_document_file(
+            login,
+            str(kw.get("document") or ""),
+            content=str(kw.get("content") or ""),
+            rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+            sheets=kw.get("sheets") if isinstance(kw.get("sheets"), list) else None,
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed edit is a sentence, not a crash
+        logger.exception("edit_document failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Updated {name} — version {version} ({size} KB).").format(
+                name=written.filename, version=written.version, size=size_kb
+            )
+        )
+
+
+def _exec_restore_document_version(ctx: dict[str, Any], **kw: Any) -> str:
+    """Bring an earlier state back as a new version."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.restore_document_version(
+            login,
+            str(kw.get("document") or ""),
+            version=kw.get("version"),
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed restore is a sentence, not a crash
+        logger.exception("restore_document_version failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Restored {name} — now version {version} ({size} KB).").format(
+                name=written.filename, version=written.version, size=size_kb
             )
         )
 
@@ -1693,7 +1966,13 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS):
+    for keep in (
+        SKILL_LOADER_TOOL,
+        WRITE_DOCUMENT_TOOL,
+        EDIT_DOCUMENT_TOOL,
+        RESTORE_DOCUMENT_VERSION_TOOL,
+        *SCHEDULER_TOOLS,
+    ):
         # Both survive narrowing: a turn that picked any other tool would otherwise
         # lose the skill loader, or the only way to hand the user a file.
         if not any(item["function"]["name"] == keep for item in chosen):
@@ -1784,10 +2063,42 @@ def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[
     try:
         parsed = json.loads(raw)
     except ValueError:
-        return {}, False
+        # A model writing a long SVG in the arguments emits raw newlines inside the
+        # JSON string, which strict JSON refuses: measured, a 19 KB drawing was
+        # rejected here and then poisoned the next request with the same parse
+        # error. Control characters are the one deviation worth accepting — the
+        # tool receives the text the model meant to write.
+        try:
+            parsed = json.loads(raw, strict=False)
+        except ValueError:
+            return {}, False
     if not isinstance(parsed, dict):
         return {}, False
     return repair_tool_arguments(parsed, schema), True
+
+
+def transcript_safe_calls(tool_calls: list[dict[str, Any]], schemas: dict[str, Any]) -> list[dict[str, Any]]:
+    """The calls as they may enter the transcript: arguments that parse, or ``{}``.
+
+    llama-server re-parses every tool call in the message history, so one malformed
+    argument string makes the whole conversation fail with the same parse error on
+    every later round — and the retry without tools cannot help, because the poison
+    is in the messages. The call is kept so the model sees that it was rejected, but
+    a call that does not parse goes in with empty arguments, which are valid JSON.
+    """
+    safe: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        function = tc.get("function", {})
+        _arguments, usable = parse_tool_arguments(
+            function.get("arguments", "{}"), schemas.get(function.get("name", ""))
+        )
+        if usable:
+            safe.append(tc)
+            continue
+        copied = json.loads(json.dumps(tc))
+        copied.setdefault("function", {})["arguments"] = "{}"
+        safe.append(copied)
+    return safe
 
 
 # Identical calls a model may make before the guard stops it. FLAI's own stream

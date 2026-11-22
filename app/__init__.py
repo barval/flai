@@ -299,6 +299,14 @@ def create_app():
     else:
         app.logger.info("Video generation module disabled (LTX_VIDEO_WRAPPER_URL not set)")
 
+    if app.config.get("MUSIC_ENABLED"):
+        from modules.music import MusicModule
+
+        modules["music"] = MusicModule(app)
+        app.logger.info(f"Music generation module enabled ({app.config.get('MUSIC_URL')})")
+    else:
+        app.logger.info("Music generation module disabled (MUSIC_URL not set)")
+
     if app.config.get("CAMERA_ENABLED"):
         from modules.cam import CamModule
 
@@ -783,6 +791,16 @@ def create_app():
             except Exception as e:
                 status["services"]["ltx_video"] = "error"
                 app.logger.error(f"Health check - ltx-video error: {e}")
+
+        # Check the music sidecar (ACE-Step 1.5)
+        music_url = app.config.get("MUSIC_URL")
+        if music_url:
+            try:
+                response = requests.get(f"{music_url.rstrip('/')}/health", timeout=5)
+                status["services"]["music"] = "ok" if response.status_code == 200 else "error"
+            except Exception as e:
+                status["services"]["music"] = "error"
+                app.logger.error(f"Health check - music error: {e}")
 
         # Check Whisper ASR
         whisper_url = app.config.get("WHISPER_API_URL")

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from flask import current_app
 
 from app import db
+from app.svg_safety import SvgValidationError, validate_svg
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ MAX_CONTENT_BYTES = 256 * 1024
 # A log may grow past one call's payload, but not without end: an unbounded file inside
 # the document store is a disk leak with a friendly name.
 MAX_APPEND_BYTES = 2 * 1024 * 1024
-TEXT_FORMATS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
+TEXT_FORMATS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt", "svg": ".svg"}
 # Binary containers are rendered, not encoded: the model's input is still text/rows.
 BINARY_FORMATS = {"docx": ".docx", "xlsx": ".xlsx", "pdf": ".pdf"}
 FORMAT_EXTENSIONS = {**TEXT_FORMATS, **BINARY_FORMATS}
@@ -43,7 +44,7 @@ MAX_NAME_STEM = 120
 # Name allocation is a read-then-write: two chats can both see "note.md" free. One
 # process runs the chat loop, so a lock covers it; a second worker would need a
 # database constraint instead.
-_write_lock = threading.Lock()
+_write_lock = threading.RLock()
 
 
 class DocumentWriteError(ValueError):
@@ -62,6 +63,9 @@ class WrittenDocument:
     size: int
     file_path: str
     absolute_path: str
+    version: int = 0
+    # What the caller asked for, before an existing file pushed it to "name (2)".
+    requested_name: str = ""
 
 
 def _documents_root() -> str:
@@ -183,7 +187,39 @@ def _payload(content: str, fmt: str, rows: list[list[str]] | None) -> str:
     if fmt == "json":
         json.loads(content)  # a generated file that does not parse is worse than none
         return content
+    if fmt == "svg":
+        try:
+            validate_svg(content)
+        except SvgValidationError as exc:
+            raise DocumentWriteError(exc.code, exc.detail) from exc
+        return content
     return content
+
+
+def _render(format_key: str, content: str, rows, sheets) -> bytes:
+    """The bytes a document of this format is made of.
+
+    A text format stores what the caller wrote (plus a trailing newline); a container is
+    drawn from the same source every time, which is what makes a re-render — and a rollback —
+    possible without keeping a copy of the rendered file.
+    """
+    if format_key in BINARY_FORMATS:
+        data = _binary_payload(format_key, content, rows, sheets)
+        if len(data) > MAX_BINARY_BYTES:
+            raise DocumentWriteError("too_large_binary", str(len(data)))
+        return data
+    try:
+        payload = _payload(content, format_key, rows)
+    except json.JSONDecodeError as exc:
+        raise DocumentWriteError("json", str(exc)) from exc
+    if not str(payload or "").strip():
+        raise DocumentWriteError("empty")
+    if not payload.endswith("\n"):
+        payload = f"{payload}\n"
+    data = payload.encode("utf-8")
+    if len(data) > MAX_CONTENT_BYTES:
+        raise DocumentWriteError("too_large", str(len(data)))
+    return data
 
 
 def write_document_file(
@@ -196,7 +232,17 @@ def write_document_file(
     sheets: list | None = None,
 ) -> WrittenDocument:
     """Store one document, or extend one this tool wrote. Refuses before writing."""
-    format_key = str(fmt or "md").strip().lower().lstrip(".")
+    # Measured: a model mixed the XML pseudo-call into the JSON values —
+    # name="scene.svg</parameter><parameter=format>svg" — and the write
+    # happily produced "parameter>svg.md". That is not a document name.
+    raw_name = str(name or "")
+    raw_format = str(fmt or "")
+    if any(marker in raw_name or marker in raw_format for marker in ("<parameter=", "</parameter>", "<function=")):
+        raise DocumentWriteError("argument_markup")
+    format_key = raw_format.strip().lower().lstrip(".")
+    if not format_key:
+        # The name is the next best statement of intent.
+        format_key = "svg" if raw_name.strip().lower().endswith(".svg") else "md"
     if format_key not in FORMAT_EXTENSIONS:
         raise DocumentWriteError("format", format_key)
     extension = FORMAT_EXTENSIONS[format_key]
@@ -206,24 +252,13 @@ def write_document_file(
         # Appending a PDF or a zip container means rewriting the structure, not
         # writing bytes at the end: that is an edit, not a growing log.
         raise DocumentWriteError("append_binary", format_key)
+    if append and format_key == "svg":
+        # One SVG is one XML document: a second root would make it unparseable.
+        raise DocumentWriteError("append_svg", format_key)
 
-    payload = ""
-    if binary:
-        data = _binary_payload(format_key, content, rows, sheets)
-        if len(data) > MAX_BINARY_BYTES:
-            raise DocumentWriteError("too_large_binary", str(len(data)))
-    else:
-        try:
-            payload = _payload(content, format_key, rows)
-        except json.JSONDecodeError as exc:
-            raise DocumentWriteError("json", str(exc)) from exc
-        if not str(payload or "").strip():
-            raise DocumentWriteError("empty")
-        if not payload.endswith("\n"):
-            payload = f"{payload}\n"
-        data = payload.encode("utf-8")
-        if len(data) > MAX_CONTENT_BYTES:
-            raise DocumentWriteError("too_large", str(len(data)))
+    data = _render(format_key, content, rows, sheets)
+    # Appending writes text; a container never reaches it (refused above).
+    payload = "" if binary else data.decode("utf-8")
 
     root = os.path.realpath(_documents_root())
     folder = os.path.join(root, user_id)
@@ -266,6 +301,7 @@ def write_document_file(
                 size=size,
                 file_path=existing["file_path"],
                 absolute_path=absolute,
+                requested_name=existing["filename"],
             )
 
         if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
@@ -292,6 +328,9 @@ def write_document_file(
             db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
             db.update_document_index_status(doc_id, db.INDEX_STATUS_NOT_INDEXED)
             db.update_user_storage(user_id, size)
+            db.add_document_version(
+                doc_id, 1, format_key, content=content, rows=rows, sheets=sheets, note="created"
+            )
         except Exception:
             # Never let the cleanup replace the error that caused it, and never leave
             # a half-document behind.
@@ -300,4 +339,146 @@ def write_document_file(
             raise
 
     logger.info(f"document written by the assistant: {filename} ({size} bytes) for {user_id!r}")
-    return WrittenDocument(id=doc_id, filename=filename, size=size, file_path=relative, absolute_path=absolute)
+    return WrittenDocument(
+        id=doc_id,
+        filename=filename,
+        size=size,
+        file_path=relative,
+        absolute_path=absolute,
+        version=1,
+        requested_name=wanted,
+    )
+
+
+def _format_of(doc: dict) -> str:
+    key = str(doc.get("file_ext") or "").strip().lower().lstrip(".")
+    if key not in FORMAT_EXTENSIONS:
+        raise DocumentWriteError("format", key or "?")
+    return key
+
+
+def _generated_target(user_id: str, target: str) -> dict:
+    """A document this assistant wrote, by id or by display name.
+
+    An upload is refused here rather than later: its bytes may be shared with every user the
+    document was shared with, so editing it in place would change a copy someone else holds.
+    """
+    wanted = str(target or "").strip()
+    if not wanted:
+        raise DocumentWriteError("target_missing")
+    doc = None
+    if len(wanted) == 32 and all(ch in "0123456789abcdef" for ch in wanted.lower()):
+        doc = db.get_document(wanted, user_id)
+    if doc is None:
+        # A display name that happens to look like an id still resolves as a name.
+        docs = db.get_user_documents(user_id)
+        matches = [item for item in docs if str(item.get("filename") or "") == wanted]
+        if not matches:
+            folded = wanted.casefold()
+            matches = [item for item in docs if str(item.get("filename") or "").casefold() == folded]
+        if len(matches) > 1:
+            raise DocumentWriteError("ambiguous", wanted)
+        doc = matches[0] if matches else None
+    if doc is None:
+        raise DocumentWriteError("not_found", wanted)
+    if str(doc.get("source") or "upload") != "generated":
+        raise DocumentWriteError("not_generated", str(doc.get("filename") or wanted))
+    return doc
+
+
+def _replace_document(user_id: str, doc: dict, data: bytes, fmt: str, content, rows, sheets, note: str) -> WrittenDocument:
+    """Rewrite a generated document's bytes and record the new state. Caller holds the lock."""
+    root = os.path.realpath(_documents_root())
+    relative = str(doc.get("file_path") or "")
+    absolute = os.path.join(root, relative)
+    if not relative or not os.path.realpath(absolute).startswith(root + os.sep) or not os.path.isfile(absolute):
+        raise DocumentWriteError("target_missing", str(doc.get("filename") or ""))
+
+    old_size = int(doc.get("file_size") or 0)
+    grown = max(0, len(data) - old_size)
+    if grown and _storage_full(user_id, grown):
+        raise DocumentWriteError("quota")
+
+    temporary = f"{absolute}.tmp-{uuid.uuid4().hex}"
+    try:
+        with open(temporary, "wb") as handle:
+            handle.write(data)
+        os.replace(temporary, absolute)
+        size = os.path.getsize(absolute)
+        db.update_document_size(doc["id"], size)
+        db.update_user_storage(user_id, size - old_size)
+        if doc.get("index_status") in (db.INDEX_STATUS_INDEXED, db.INDEX_STATUS_INDEXING):
+            # The indexed body is the old one; search must not serve it as current.
+            db.update_document_index_status(doc["id"], db.INDEX_STATUS_STALE)
+        version = db.next_document_version(doc["id"])
+        db.add_document_version(
+            doc["id"], version, fmt, content=content or "", rows=rows, sheets=sheets, note=note
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(temporary)
+
+    logger.info(f"document edited by the assistant: {doc.get('filename')} v{version} ({size} bytes)")
+    return WrittenDocument(
+        id=str(doc["id"]),
+        filename=str(doc.get("filename") or ""),
+        size=size,
+        file_path=relative,
+        absolute_path=absolute,
+        version=version,
+    )
+
+
+def edit_document_file(
+    user_id: str,
+    target: str,
+    content: str = "",
+    rows: list[list[str]] | None = None,
+    sheets: list | None = None,
+    note: str = "",
+) -> WrittenDocument:
+    """Replace the body of a document this assistant wrote; the format never changes."""
+    with _write_lock:
+        doc = _generated_target(user_id, target)
+        fmt = _format_of(doc)
+        data = _render(fmt, content, rows, sheets)
+        return _replace_document(user_id, doc, data, fmt, content, rows, sheets, note or "edited")
+
+
+def restore_document_version(
+    user_id: str, target: str, version: int | None = None
+) -> WrittenDocument:
+    """Bring back an earlier state as a new version.
+
+    History stays append-only: a rollback writes version N+1 with the old body, so undoing a
+    rollback is another rollback rather than a lost row.
+    """
+    with _write_lock:
+        doc = _generated_target(user_id, target)
+        fmt = _format_of(doc)
+        history = db.get_document_versions(doc["id"])
+        if version is None:
+            if len(history) < 2:
+                raise DocumentWriteError("no_versions", str(doc.get("filename") or ""))
+            version = int(history[1]["version"])
+        try:
+            chosen = int(version)
+        except (TypeError, ValueError) as exc:
+            raise DocumentWriteError("version_not_found", str(version)) from exc
+        row = db.get_document_version(doc["id"], chosen)
+        if row is None:
+            raise DocumentWriteError("version_not_found", str(version))
+        row_format = str(row.get("format") or fmt)
+        if row_format != fmt:
+            raise DocumentWriteError("format", row_format)
+        data = _render(fmt, row.get("content") or "", row.get("rows"), row.get("sheets"))
+        return _replace_document(
+            user_id,
+            doc,
+            data,
+            fmt,
+            row.get("content") or "",
+            row.get("rows"),
+            row.get("sheets"),
+            f"restored from v{chosen}",
+        )

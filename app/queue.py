@@ -33,9 +33,16 @@ from .db import (
 from .engine.loop import Turn, run_tool_loop
 from .engine.session import ChatSession
 from .events import get_events_publisher
-from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
+from .leaked_calls import LeakedCallFilter, parse_leaked_tool_calls
+from .llamacpp_client import (
+    _repetition_cutoff,
+    _strip_generic_reasoning,
+    _strip_thinking_tags,
+    strip_repetition_loop,
+)
 from .model_config import get_model_config
 from .model_status import answer_model_type
+from .svg_answer import SvgBlockFilter
 from .tools import (
     MAX_TOOL_ITERATIONS,
     ToolCallLoopGuard,
@@ -46,6 +53,7 @@ from .tools import (
     parse_tool_arguments,
     repeated_call_message,
     select_tool_definitions,
+    transcript_safe_calls,
 )
 from .utils import (
     N_,
@@ -158,6 +166,51 @@ def _run_document_indexing(
     except Exception as exc:  # noqa: BLE001 — indexing succeeded either way
         app.logger.warning(f"graph: extraction not queued for {doc_id}: {exc}")
     return True, message, embedding_model, False
+
+
+TOOL_STAGES: dict[str, str] = {
+    "get_current_time": "getting_time",
+    "calculator": "calculating",
+    "time_calc": "calculating_date",
+    "web_search": "searching_web",
+    "rag_search": "searching_documents",
+    "history_search": "searching_history",
+    "camera_snapshot": "capturing_snapshot",
+    "write_document": "writing_document",
+    "edit_document": "editing_document",
+    "restore_document_version": "restoring_document",
+}
+
+
+# `"format"` as it appears in a streamed argument string, before the JSON is complete.
+_FORMAT_IN_STREAM = re.compile(r'"format"\s*:\s*"([A-Za-z0-9]+)"')
+
+
+def tool_stage_from_prefix(tool_name: str, arguments: str = "") -> str | None:
+    """The stage for a call whose arguments are still streaming, or None to wait.
+
+    A drawing must not be announced as "writing a document" for the 25 seconds the
+    model spends composing it. The format is the second field the model writes, so
+    the answer arrives about a second into the stream; until then there is nothing
+    honest to show and the previous stage stays. None means "call me again" — the
+    caller stops asking once a stage comes back.
+    """
+    if tool_name == "write_document":
+        found = _FORMAT_IN_STREAM.search(arguments or "")
+        if found and found.group(1).lower() == "svg":
+            return "creating_svg"
+        # A document is a document from the first moment; the format only decides
+        # whether it is a drawing. Measured: a call without a format key showed no
+        # status at all for the whole generation.
+        return "writing_document"
+    return TOOL_STAGES.get(tool_name)
+
+
+def tool_stage(tool_name: str, arguments: dict[str, Any] | None = None) -> str | None:
+    """The progress stage for a finished call, or None when it needs no announcement."""
+    if tool_name == "write_document" and (arguments or {}).get("format") == "svg":
+        return "creating_svg"
+    return TOOL_STAGES.get(tool_name)
 
 
 class RedisRequestQueue:
@@ -725,6 +778,9 @@ class RedisRequestQueue:
             return "fast"
         # Video tasks are slow
         if req_type == "video":
+            return "slow"
+        # A song is one GPU task, like a video clip.
+        if req_type == "music_gen":
             return "slow"
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
@@ -3355,6 +3411,97 @@ class RedisRequestQueue:
             generation_options=request_data,
         )
 
+    def _process_music_request(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a music task from the slow queue."""
+        data = task.get("data", {})
+        return self._process_music_gen_task(
+            data.get("text", ""),
+            data.get("lyrics", ""),
+            int(data.get("duration") or 0),
+            task["session_id"],
+            task["user_id"],
+            task.get("lang", "ru"),
+            data.get("response_style", "neutral"),
+            task=task,
+        )
+
+    def _process_music_gen_task(
+        self,
+        query: str,
+        lyrics: str,
+        duration: int,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Render one song with the ACE-Step sidecar and answer with the file."""
+        from pathlib import Path
+
+        from modules.music import MusicError
+
+        base = self.app.modules["base"]
+        module = self.app.modules.get("music")
+        if module is None:
+            return self._build_error_response(
+                session_id, base._("Music generation module unavailable", lang=lang), 0, lang
+            )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+        from app.vram_estimate import music_vram_mb
+
+        self._unload_llamacpp_models()
+        from app.resource_manager import get_resource_manager
+
+        needed = music_vram_mb(duration or module.default_duration_s)
+        if not get_resource_manager().ensure_vram_for("music", needed_mb=needed, timeout=180):
+            return self._build_error_response(
+                session_id, base._("GPU memory unavailable. Try again in a moment.", lang=lang), 0, lang
+            )
+
+        started = time.time()
+        try:
+            result = module.generate(
+                query,
+                lyrics,
+                duration_s=duration or None,
+                language="en" if lang == "en" else "ru",
+                out_dir=Path(self.app.config["UPLOAD_FOLDER"]) / "music" / str(user_id),
+            )
+        except MusicError:
+            return self._build_error_response(
+                session_id, base._("Music generation failed", lang=lang), time.time() - started, lang
+            )
+
+        file_path = os.path.relpath(result["path"], self.app.config["UPLOAD_FOLDER"])
+        file_name = os.path.basename(result["path"])
+        elapsed = round(time.time() - started, 1)
+        template = base._("Music generated from request: {query}", lang=lang)
+        prefix = "🎵 " + template.replace("{query}", "")
+        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+        return self._save_and_respond(
+            session_id,
+            message_text,
+            result.get("model") or "music",
+            {"gen_time": elapsed},
+            file_data=None,
+            file_type="audio/wav",
+            file_name=file_name,
+            file_path=file_path,
+            extra={
+                "task_id": task.get("id") if task else None,
+                "file_path": file_path,
+                "file_name": file_name,
+                "file_size": result.get("bytes"),
+                "file_type": "audio/wav",
+                "gen_model": result.get("model"),
+                "seed": result.get("seed"),
+                "model_type": "music",
+            },
+            response_style=response_style,
+        )
+
     def _process_video_gen_task(
         self,
         query: str,
@@ -5565,6 +5712,47 @@ class RedisRequestQueue:
         else:
             messages.insert(0, {"role": "system", "content": block})
 
+    def _document_from_svg_answer(self, text: str, user_id: str, lang: str) -> tuple[str, str | None]:
+        """Store a drawing the model pasted as ```svg and name it in the answer.
+
+        Measured: a 13 000-character block reached the user as code, with no way to
+        open it and nothing in the library. The markup is validated and written by
+        the same writer `write_document` uses; a drawing that fails is left as text
+        rather than silently dropped.
+        """
+        from app import documents_write
+        from app.svg_answer import extract_svg_block, suggested_name
+
+        found = extract_svg_block(text)
+        if not found:
+            return text, None
+        start, end, markup = found
+        with force_locale(lang):
+            from flask_babel import gettext
+
+            # `gettext` spelled out, not aliased: the extractor reads that name.
+            fallback = str(gettext("Drawing"))
+        try:
+            written = documents_write.write_document_file(
+                user_id,
+                suggested_name(markup, fallback),
+                content=markup,
+                fmt="svg",
+            )
+        except Exception as exc:  # noqa: BLE001 - an invalid drawing stays text
+            self.logger.warning(f"svg answer: the pasted drawing was not stored: {exc}")
+            return text, None
+        size_kb = max(1, round(written.size / 1024))
+        with force_locale(lang):
+            from flask_babel import gettext as _
+
+            sentence = str(
+                _("Saved as {name} ({size} KB) in your documents. SVG documents are not indexed.").format(
+                    name=written.filename, size=size_kb
+                )
+            )
+        return text[:start] + sentence + text[end:], written.filename
+
     def _run_tool_calls(
         self,
         task: dict[str, Any],
@@ -5589,14 +5777,29 @@ class RedisRequestQueue:
                 publish=lambda event, payload: self._publish_stream_event(task, event, payload),
                 report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
             )
-        session.append_assistant(assistant_content, tool_calls)
-        last_tool_result = ""
         schemas = {item["function"]["name"]: item["function"].get("parameters") for item in get_tool_definitions(lang)}
-        for tc in tool_calls:
+        parsed_calls = [
+            (
+                tc,
+                parse_tool_arguments(
+                    tc.get("function", {}).get("arguments", "{}"),
+                    schemas.get(tc.get("function", {}).get("name", "")),
+                ),
+            )
+            for tc in tool_calls
+        ]
+        # An unparsable call must not enter the transcript as it is: llama-server
+        # re-parses every tool call in the history, so one malformed one makes the
+        # whole conversation fail with the same error on every later round, and the
+        # retry without tools cannot help because the poison is in the messages.
+        # The call is kept (the model must see that it was rejected) with empty
+        # arguments, which are valid JSON.
+        session.append_assistant(assistant_content, transcript_safe_calls(tool_calls, schemas))
+        last_tool_result = ""
+        for tc, (arguments, usable) in parsed_calls:
             tc_id = tc.get("id", "")
             func = tc.get("function", {})
             tool_name = func.get("name", "")
-            arguments, usable = parse_tool_arguments(func.get("arguments", "{}"), schemas.get(tool_name))
             if not usable:
                 # An unparsable call used to run with {} — a search with an empty
                 # query, which teaches the model nothing about what went wrong.
@@ -5613,15 +5816,7 @@ class RedisRequestQueue:
             session.report_tool_call(tool_name, arguments)
             self.logger.info(f"{log_label}: {tool_name}({arguments})")
 
-            stage = {
-                "get_current_time": "getting_time",
-                "calculator": "calculating",
-                "time_calc": "calculating_date",
-                "web_search": "searching_web",
-                "rag_search": "searching_documents",
-                "history_search": "searching_history",
-                "camera_snapshot": "capturing_snapshot",
-            }.get(tool_name)
+            stage = tool_stage(tool_name, arguments)
             if stage:
                 session.report_stage(stage)
 
@@ -5756,6 +5951,26 @@ class RedisRequestQueue:
         # The label only changes for a call the model printed as text; the loop
         # hands the caller one kind of turn either way.
         current_label = {"value": "Tool call"}
+        announced: dict[str, str] = {}
+
+        def on_tool_call_started(tool_name: str, arguments: str = "") -> bool:
+            # The model spends most of a document request composing the call
+            # itself: the SVG in the previous round took 25 s before the tool
+            # ran for 0.6 s. The name arrives in the first delta and the format
+            # a moment later, so the stage is announced there — and refined to
+            # the drawing as soon as the format is readable. True means "the
+            # label is final", and the client stops asking.
+            stage = tool_stage_from_prefix(tool_name, arguments)
+            if stage is None:
+                return False
+            if announced.get(tool_name) != stage:
+                announced[tool_name] = stage
+                session.report_stage(stage)
+            if tool_name == "write_document":
+                # Keep asking until the format is readable: a drawing must replace
+                # the generic label rather than never appear.
+                return bool(_FORMAT_IN_STREAM.search(arguments or ""))
+            return True
 
         def generate(round_tool_choice: str | None) -> Turn:
             if not stream:
@@ -5783,12 +5998,16 @@ class RedisRequestQueue:
             iteration_text = ""
             error_detected = False
             stream_tool_calls: list[dict[str, Any]] | None = None
+            leak_filter = LeakedCallFilter()
+            svg_filter = SvgBlockFilter()
+            loop_check_at = 0
             for chunk in llamacpp.chat_stream(
                 messages,
                 model_type="multimodal",
                 lang=lang,
                 tools=tools,
                 tool_choice=round_tool_choice,
+                tool_call_started=on_tool_call_started,
             ):
                 if isinstance(chunk, dict):
                     if chunk.get("type") == "tool_calls":
@@ -5799,11 +6018,51 @@ class RedisRequestQueue:
                     if self._is_llm_error_string(iteration_text):
                         error_detected = True
                     else:
-                        session.on_token(chunk)
+                        visible = leak_filter.feed(chunk)
+                        if visible:
+                            visible = svg_filter.feed(visible)
+                            if visible:
+                                session.on_token(visible)
+                            elif svg_filter.suppressed and announced.get("svg_block") != "creating_svg":
+                                announced["svg_block"] = "creating_svg"
+                                session.report_stage("creating_svg")
                 if self._is_task_cancelled(task["id"]):
                     break
+                # The repetition guard used to be reasoning-only. Measured: a chat
+                # answer built an HTML scene with duplicated trees, walked its x
+                # coordinate to 9 300 and streamed until the token cap — the user
+                # watched it loop. Cutting the stream is what ends that.
+                if len(iteration_text) - loop_check_at >= 400:
+                    loop_check_at = len(iteration_text)
+                    cutoff = _repetition_cutoff(iteration_text)
+                    if cutoff is not None:
+                        self.logger.warning(f"Chat stream cut at a repetition loop ({cutoff} chars)")
+                        iteration_text = iteration_text[:cutoff].rstrip()
+                        break
+                if leak_filter.leaked:
+                    # The model started printing the call as text — measured, a whole
+                    # SVG inside an escaped parameter. The rest is noise the user must
+                    # not watch, and stopping here is what ends the "hang".
+                    break
+            if not leak_filter.leaked and not error_detected:
+                tail = leak_filter.flush()
+                if tail:
+                    tail = svg_filter.feed(tail)
+                    if tail:
+                        session.on_token(tail)
+                rest = svg_filter.flush()
+                if rest:
+                    session.on_token(rest)
             if error_detected:
                 return Turn(error=iteration_text)
+            if leak_filter.leaked:
+                calls, remaining = parse_leaked_tool_calls(iteration_text)
+                self.logger.warning(
+                    f"Tool call printed as text: recovered {[c['function']['name'] for c in calls]}"
+                )
+                if not stream_tool_calls and calls:
+                    return Turn(text=remaining, tool_calls=calls)
+                return Turn(text=remaining, tool_calls=stream_tool_calls or [])
             return Turn(text=iteration_text, tool_calls=stream_tool_calls or [])
 
         def execute(tool_calls: list[dict[str, Any]], assistant_content: str) -> str:
@@ -5849,7 +6108,12 @@ class RedisRequestQueue:
                 round(time.time() - stream_start, 1),
                 lang,
             )
-        full_response = loop_result.text
+        full_response = strip_repetition_loop(loop_result.text)
+        if len(full_response) < len(loop_result.text):
+            self.logger.warning("Chat answer cut at a repetition loop after the stream")
+        full_response, saved_drawing = self._document_from_svg_answer(full_response, user_id, lang)
+        if saved_drawing:
+            self.logger.info(f"svg answer: the pasted drawing was stored as {saved_drawing!r}")
         last_tool_result = loop_result.last_tool_result
         if not full_response.strip() and not last_tool_result.strip():
             self.logger.warning("Chat model returned empty response after reasoning strip")
@@ -6554,6 +6818,8 @@ class RedisRequestQueue:
             return self._process_video_request(task)
         if task_type == "image_gen":
             return self._process_image_gen_request(task)
+        if task_type == "music_gen":
+            return self._process_music_request(task)
         if task_type == "reasoning_task":
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":

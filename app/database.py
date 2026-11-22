@@ -547,6 +547,28 @@ def _init_postgresql():
         END
         $migrate$
     """)
+    # v13.6: every state a generated document has been in. A text document's source is the
+    # file itself; a rendered .docx/.xlsx/.pdf keeps the body it was drawn from, because that
+    # body is the only thing that can be re-rendered — a PDF is a drawing, not text. Versions
+    # are not charged to the quota: they are bounded per document and small next to the files.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS document_versions (
+            id UUID PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL,
+            format TEXT NOT NULL DEFAULT 'md',
+            content TEXT NOT NULL DEFAULT '',
+            rows JSONB,
+            sheets JSONB,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (document_id, version)
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_versions_document"
+        " ON document_versions (document_id, version DESC)"
+    )
     c.execute("""
         CREATE TABLE IF NOT EXISTS document_folders (
             id TEXT PRIMARY KEY,
@@ -1169,7 +1191,7 @@ def _init_postgresql():
             body          TEXT NOT NULL DEFAULT '',
             repeat        TEXT NOT NULL DEFAULT 'once',
             every_minutes INTEGER,
-            weekday       SMALLINT,
+            weekdays      SMALLINT[],
             day_of_month  SMALLINT,
             time_of_day   TIME,
             timezone      TEXT NOT NULL DEFAULT 'UTC',
@@ -1183,6 +1205,24 @@ def _init_postgresql():
         "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
         " WHERE enabled AND next_run_at IS NOT NULL"
     )
+    # v13.6: a weekly item repeats on a set of weekdays, so "every Tuesday and Thursday" is
+    # one schedule rather than two. An installation that predates the set carries a single
+    # `weekday`; it is folded into the array and then dropped, because two columns holding
+    # the same fact is how a later reader ends up trusting the stale one.
+    c.execute("ALTER TABLE scheduler_items ADD COLUMN IF NOT EXISTS weekdays SMALLINT[]")
+    c.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'scheduler_items' AND column_name = 'weekday'
+            ) THEN
+                UPDATE scheduler_items SET weekdays = ARRAY[weekday]
+                WHERE repeat = 'weekly' AND weekdays IS NULL AND weekday IS NOT NULL;
+            END IF;
+        END $$
+    """)
+    c.execute("ALTER TABLE scheduler_items DROP COLUMN IF EXISTS weekday")
 
     # v13.5: one row per firing of an action. A run is not a task — it is a short service
     # loop — so it lives in its own table and the Tasks tab cannot show it by construction.

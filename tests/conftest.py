@@ -54,7 +54,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 # ── Helpers: mock external services ────────────────────────────────────
 
 
-def stop_app_background_threads(flask_app: Any) -> None:
+def stop_app_background_threads(flask_app: Any, executor: Any = None) -> None:
     """Stop the per-app daemon threads that create_app() starts.
 
     Every create_app() spawns an SLM merge watcher and (with the llama-swap
@@ -62,7 +62,23 @@ def stop_app_background_threads(flask_app: Any) -> None:
     so without this a suite that builds hundreds of apps accumulates hundreds
     of live threads and their Redis clients. Best-effort: a test that
     deliberately skipped a thread must not fail the teardown.
+
+    ``executor`` is the Tasks executor this app started. It is passed in
+    explicitly because the module singleton is not that instance by teardown
+    time: a test may have reset it, or a later app may have replaced it, and the
+    orphaned thread then polled the shared test database for the rest of the
+    file — measured, it froze and interrupted the tasks of later tests, so 2–5
+    of 190 failed per full-file run while each failed test passed alone.
     """
+    if executor is not None:
+        with contextlib.suppress(Exception):
+            executor.stop(timeout=2)
+        with contextlib.suppress(Exception):
+            from app.tasks import executor as tasks_executor
+
+            with tasks_executor._executor_lock:
+                if tasks_executor._EXECUTOR is executor:
+                    tasks_executor._EXECUTOR = None
     with contextlib.suppress(Exception):
         from app import stop_slm_merge_watcher
 
@@ -1050,6 +1066,17 @@ def test_app():
 
         flask_app = create_app()
 
+        # create_app() starts the Tasks executor thread. Hold the instance this
+        # app started: by teardown the module singleton may already point
+        # somewhere else, and a thread nobody stops keeps polling this database
+        # for every later test in the file.
+        started_executor = None
+        with contextlib.suppress(Exception):
+            from app.tasks import executor as tasks_executor
+
+            with tasks_executor._executor_lock:
+                started_executor = tasks_executor._EXECUTOR
+
         flask_app.config.update(
             {
                 "TESTING": True,
@@ -1074,7 +1101,7 @@ def test_app():
             flask_app.request_queue.stop_workers(timeout=3)
 
         # Teardown: stop the per-app watcher threads (see helper above)
-        stop_app_background_threads(flask_app)
+        stop_app_background_threads(flask_app, executor=started_executor)
 
         # Teardown: clean real DB between tests to prevent cross-test pollution.
         # Guarded so a live database (non ``*_test``) is never truncated.

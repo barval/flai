@@ -302,6 +302,10 @@ const STAGE_LABEL_KEYS = {
     getting_time: 'stage_getting_time',
     calculating: 'stage_calculating',
     calculating_date: 'stage_calculating_date',
+    writing_document: 'stage_writing_document',
+    creating_svg: 'stage_creating_svg',
+    editing_document: 'stage_editing_document',
+    restoring_document: 'stage_restoring_document',
     rlm_reading: 'stage_rlm_reading',
     rlm_step: 'stage_rlm_step',
     rlm_searching_web: 'stage_rlm_searching_web',
@@ -329,7 +333,9 @@ const STAGE_COUNTER_KEYS = {
 
 function getStageLabel(stage, count) {
     const key = STAGE_LABEL_KEYS[stage];
-    if (!key) return stage;
+    // A tab opened before an upgrade keeps the old map, while the server sends the
+    // new stage ids. An unknown id must not reach the user as an internal key.
+    if (!key) return t('stage_working');
     if (count !== undefined && count !== null && STAGE_COUNTER_KEYS[stage]) {
         const template = t(STAGE_COUNTER_KEYS[stage]);
         return template.indexOf('%s') !== -1 ? template.replace('%s', count) : template;
@@ -343,7 +349,14 @@ function onTaskProgress(data) {
     if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages));
+    // An unknown stage id comes from a server newer than this tab (a stage was
+    // renamed while the page stayed open). Showing the generic "Working..."
+    // replaced a label that was already right, so the label is left alone.
+    const known = Object.prototype.hasOwnProperty.call(STAGE_LABEL_KEYS, data.stage);
+    const label = known
+        ? getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages)
+        : undefined;
+    _updateProgressElement(data.task_id, data.session_id, label);
     _showHeaderCancelButton(data.task_id);
 }
 
@@ -397,8 +410,18 @@ function _updateProgressElement(taskId, sessionId, text) {
         progressEl.setAttribute('data-session-id', sessionId);
         chatMessages.appendChild(progressEl);
     }
-    progressEl.textContent = text;
-    _startProgressTimer(taskId, progressEl, text);
+    // `undefined` means "the stage id is unknown to this tab": keep whatever label
+    // is on screen instead of overwriting it with the generic one.
+    if (text === undefined) {
+        if (!_progressTimers[taskId]) {
+            const fallback = t('stage_working');
+            progressEl.textContent = fallback;
+            _startProgressTimer(taskId, progressEl, fallback);
+        }
+    } else {
+        progressEl.textContent = text;
+        _startProgressTimer(taskId, progressEl, text);
+    }
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 

@@ -47,6 +47,10 @@ Choose exactly one:
 - A request to CREATE, SAVE or WRITE a file or document ("create тест.txt with the date",
   "save this to a file", "make a report file") is none, never reasoning: the write_document
   tool makes the file. Reasoning is code or prose that stays in the answer.
+- A request that names a document format ("svg-документ", "an SVG file", ".pdf", ".csv",
+  "как файл") is none with write_document, never image or video — even when it describes a
+  picture, a character or a scene. image means a raster picture; a drawing made of shapes and
+  text that is asked for as a file is a document.
 
 # TOOLS
 The runtime tools currently available are listed below. Put at most 6 names in "tools"; use the exact names.

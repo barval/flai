@@ -10,45 +10,20 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
-- **Make mypy actually check the project** — the type check is advisory in CI (`mypy … || true`)
-  and, as configured, it does not run at all: `python_version = "3.11"` meets numpy 2.5's stub,
-  which uses the PEP 695 `type X = …` syntax added in 3.12, and mypy aborts on that file
-  (`errors prevented further checking`) before it reaches `app/`. Measured with
-  `--python-version 3.12`: **204 errors in 40 files**, plus 71 notes — 60 of them
-  `annotation-unchecked` (bodies with no annotations, i.e. blind spots). Of the 204 errors:
-  51 `union-attr`, 44 `no-any-return`, 39 `arg-type`, 21 `attr-defined`, 13 `operator`, and
-  36 the rest. A reading pass over the
-  candidates found **three places where the type is a real risk, not noise**: `app/tasks/store.py:update_task`
-  is annotated `-> dict` and returns `None` when the row is gone; a bytes `stderr` slice is
-  formatted into a log line in `app/routes/backups.py`; `modules/cam.py` calls `.rstrip()` on
-  `camera_api_url`, which is `None` until `initialize()`. Everything else is `Any` from untyped
-  dependencies, Flask extension attributes mypy cannot know (`app.modules`, `app.request_queue`),
-  or annotations that disagree with the code without changing behaviour. Next: choose the target
-  (3.12 for a check that runs, with `python3.11 -m compileall` keeping the image-version guard;
-  or 3.11 with `follow_imports=skip`, 181 findings and no dependency types), declare the Flask
-  extensions with a `Protocol`, fix the three real candidates, then remove `|| true` from CI and
-  ratchet the count down file by file.
+- **Burn down the mypy backlog** — the check now blocks CI, but 38 modules are still silenced by
+  `ignore_errors` (198 errors). Un-silencing one is small work: fix the finding, delete its line
+  from `[tool.mypy.overrides]`, and the release gate confirms the entry is gone. The first step
+  is shared infrastructure, not a file: a `Protocol` for the two Flask extensions
+  (`app.modules`, `app.request_queue`, 331 uses together), because most of the `attr-defined`
+  findings are that one missing declaration rather than 331 separate mistakes. The rest is
+  `Any` leaking from untyped dependencies and annotations that disagree with the code.
 
-- **Editing documents the assistant wrote** — the tool writes and appends text today, and can
-  emit `.docx`/`.xlsx`/`.pdf`, but it cannot change what it wrote. Editing is scoped to
-  **generated documents only**: an upload is never modified in place, because its bytes may be
-  shared (the blob layer keeps one copy per hash) and a recipient's copy must not change under
-  them. A request to fix an uploaded file is answered by writing a **new document built from
-  it**, under a different name, and editing that one. Planned in four steps, in value order:
-  (1) replace the content of a generated text document, with a version row and a rollback;
-  (2) replace a generated `.docx`/`.xlsx` from a full new body, warning that a spreadsheet
-  loses charts and images on save; (3) targeted edits (one paragraph, one cell) only if a real
-  need appears; (4) a generated PDF is re-rendered from its stored source text, never patched —
-  a PDF is a drawing, not text. Every step sets the document `stale` so search cannot serve the
-  old body.
-
-- **An adaptive lead for frequent actions** — the lead is a constant: ten minutes, capped at
-  half the interval for a repeating action (v13.5). That is a rule of thumb, not a measurement.
-  The next step is to lead by what the item's own runs actually cost — the median duration of its
-  last N completed tasks plus a margin — so a check that takes 40 seconds is not queued five
-  minutes early and one that takes four minutes is not queued too late. Needs: a per-item
-  duration history (the `tasks` rows already carry `started_at`/`completed_at`), a small
-  aggregate in the tick, and a measurement on the reference card before choosing the margin.
+- **Targeted edits inside a document** — replacing a whole document shipped in v13.6
+  (`edit_document`, `restore_document_version`, versions and rollback). Changing **one
+  paragraph or one cell** is the remaining step, and it waits for a real need: the whole-body
+  replacement already answers "rewrite the summary", while a targeted edit needs a locator the
+  model can trust (a heading, a row number) and a way to show what changed. An upload stays out
+  of scope by the same rule: never edit in place, build a new document from it.
 
 - **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
   engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
@@ -69,6 +44,20 @@ This list is not a commitment. Items move when their priority changes, and an it
   its benchmark. Next: a few hundred labelled queries, a trained head or a
   fine-tune, and the hybrid rule (confident → fast path, unsure → kernel) only if
   it clears the kernel on our own cases.
+- **Music generation and sung songs (prototype first)** — FLAI generates images and video but nothing
+  musical. One candidate fits the licence rule: **ACE-Step 1.5** (MIT on the code *and* the weights,
+  50+ lyric languages including Russian, runs from under 4 GB of VRAM with quantisation and offload,
+  ships a REST API, a Dockerfile and a compose file). The alternatives fail on something concrete:
+  MusicGen and Stable Audio Open generate no vocals and their weights are CC-BY-NC and a gated
+  community licence; YuE2's weights are CC-BY-NC and need 24 GB; DiffRhythm is Apache-2.0 but
+  understands only Chinese and English. The prototype ran on 2026-11-21: the 2B pair peaks at
+  **6.9 GB of 16.3 GB**, renders a 30 s Russian song in **10–12 s**, and the sung lyrics come back
+  through the installation's own Whisper at **0.78–0.83 word recall** — but only when the lyrics
+  carry `[verse]`/`[chorus]` structure; without it there is no intelligible vocal at all, and a
+  duration longer than the lyric set makes the planner produce an instrumental. The next decision is
+  whether a music sidecar (a queue task type next to video) is worth building. Design notes live in
+  the local spec tree, not in the published docs.
+
 - Plugin architecture for custom modules
 - Multi-GPU support
 - **Multi-platform GPU support** — first iteration shipped in v13.0: the compose stack is split into a

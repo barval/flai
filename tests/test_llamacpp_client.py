@@ -578,7 +578,7 @@ class TestErrorSizeAndToolCallFallback:
             sent = mock_post.call_args.kwargs["json"]
             assert sent["max_tokens"] == MAX_STREAM_TOKENS
 
-    def test_a_broken_tool_call_is_retried_without_tools(self):
+    def test_a_broken_tool_call_is_retried_with_the_tools(self):
         broken = self._response(
             500,
             {"error": {"code": 500, "message": "Failed to parse tool call arguments as JSON: column 85156"}},
@@ -610,5 +610,42 @@ class TestErrorSizeAndToolCallFallback:
                 )
 
         assert mock_post.call_count == 2
-        assert "tools" not in mock_post.call_args_list[1].kwargs["json"]
+        # The catalogue stays: dropping it answered a document request with an
+        # apology instead of the file (measured: a 22 KB call the server refused).
+        assert "tools" in mock_post.call_args_list[1].kwargs["json"]
         assert "ok" in "".join(str(token) for token in tokens)
+
+    def test_a_tool_call_broken_twice_falls_back_to_an_answer_without_tools(self):
+        broken = self._response(
+            500,
+            {"error": {"code": 500, "message": "Failed to parse tool call arguments as JSON: column 85156"}},
+        )
+        answer = MagicMock()
+        answer.status_code = 200
+        answer.iter_lines.return_value = [
+            b'data: {"choices":[{"delta":{"content":"ok"}}]}',
+            b"data: [DONE]",
+        ]
+
+        with patch("app.llamacpp_client.requests.post", side_effect=[broken, broken, answer]) as mock_post:
+            from app.llamacpp_client import LlamaSwapBackend
+
+            backend = LlamaSwapBackend()
+            cb = MagicMock()
+            cb.can_execute.return_value = True
+            with patch.object(backend, "_get_circuit_breaker", return_value=cb):
+                list(
+                    backend.chat_stream(
+                        [{"role": "user", "content": "test"}],
+                        model="m",
+                        config={"context_length": 24576},
+                        timeout=60,
+                        lang="en",
+                        model_type="multimodal",
+                        tools=[{"type": "function", "function": {"name": "t"}}],
+                    )
+                )
+
+        assert mock_post.call_count == 3
+        assert "tools" in mock_post.call_args_list[1].kwargs["json"]
+        assert "tools" not in mock_post.call_args_list[2].kwargs["json"]

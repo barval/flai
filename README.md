@@ -16,7 +16,7 @@
 
 - **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service on the processing path (the only exception is optional web search through Tavily).
 - **One GPU queue, strictly serialized.** VRAM is cleaned unconditionally between GPU tasks; a model is loaded only after the previous one is gone.
-- **An LLM router decides what happens.** Every message is classified into one of eleven categories — there is no keyword routing anywhere in the code.
+- **An LLM router decides what happens.** Every message is classified into one of fourteen categories — there is no keyword routing anywhere in the code.
 - **Multimodal, multilingual, persistent.** Images and scanned PDFs are read by a vision model, the UI is English/Russian, and long-term memory survives across sessions.
 - **A public OpenAI-compatible API.** `/v1/chat/completions`, embeddings, media, audio, files and RLM, with per-user keys and an interactive reference at `/v1/docs`. Multi-image chat, deep analysis with images and «draw something similar» references work through the API exactly like in the web chat.
 - **GPU or CPU.** 8 GB of VRAM runs the core stack; larger models and full-resolution video need more VRAM. CPU-only mode runs the same features, slower, with automatic downscaling for media.
@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.5](#-whats-new-in-v135)
+- [🆕 What's New in v13.6](#-whats-new-in-v136)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -53,14 +53,19 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Models, download commands, licenses | [MODELS.md](docs/MODELS.md) | [MODELS-ru.md](docs/MODELS-ru.md) |
 | Environment variables, compose profiles | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
 | Web search, Tavily keys, site crawler | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
+| Network diagnostics sidecar and tools | [NET_TOOLS.md](docs/NET_TOOLS.md) | [NET_TOOLS-ru.md](docs/NET_TOOLS-ru.md) |
 | Deep analysis (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
 | Background tasks (Tasks) | [TASKS.md](docs/TASKS.md) | [TASKS-ru.md](docs/TASKS-ru.md) |
+| Reminders, scheduled actions | [SCHEDULER.md](docs/SCHEDULER.md) | [SCHEDULER-ru.md](docs/SCHEDULER-ru.md) |
 | Image generation and editing | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
 | Video generation (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
 | Voice: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
 | Camera integration | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
 | Long-term memory (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
-| Documents, RAG, PDF OCR | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| Documents, RAG, PDF OCR, writing and editing | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| Music generation (ACE-Step 1.5 sidecar) | [MUSIC.md](docs/MUSIC.md) | [MUSIC-ru.md](docs/MUSIC-ru.md) |
+| Entities, relations, the knowledge-graph view | [GRAPH.md](docs/GRAPH.md) | [GRAPH-ru.md](docs/GRAPH-ru.md) |
+| Skills: format, installation, allowed-tools | [SKILLS.md](docs/SKILLS.md) | [SKILLS-ru.md](docs/SKILLS-ru.md) |
 | RAG quality measurement (hit@k, MRR, nDCG, latency) | [RAG_EVAL.md](docs/RAG_EVAL.md) | [RAG_EVAL-ru.md](docs/RAG_EVAL-ru.md) |
 | Users, backups, Model Hub, branding | [ADMINISTRATION.md](docs/ADMINISTRATION.md) | [ADMINISTRATION-ru.md](docs/ADMINISTRATION-ru.md) |
 | Health endpoint, Prometheus metrics | [MONITORING.md](docs/MONITORING.md) | [MONITORING-ru.md](docs/MONITORING-ru.md) |
@@ -73,52 +78,43 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.5
+## 🆕 What's New in v13.6
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
-- **The assistant can be asked to do something later.** Two kinds, because they are not the same
-  thing: a **reminder** is a sentence prepared when it was created (no model, no queue — a hundred
-  can fire in one second), an **action** is a short service run with your tools that never appears
-  in the Tasks tab, may run late and says so, and launches an ordinary task when the work is larger
-  than a few rounds. Ask in chat — "remind me tomorrow at
-  nine", "every Friday at 16:00 check the logs" — and the assistant answers with the concrete
-  stored time, the one chance to notice a misunderstanding before it fires. Deliveries land in two
-  system chats, a reminder also pops up on screen, missed firings follow a policy you set, and the
-  list in your profile deletes a schedule together with whatever it started.
-  → [SCHEDULER.md](docs/SCHEDULER.md)
+- **The assistant writes songs.** Ask for a song, or hand it your own lyrics, and it comes back
+  as an audio message with a player. ACE-Step 1.5 (MIT) runs in its own container under the
+  `with-music` profile: a 30 s Russian song takes 12–15 s on a 16 GB card and peaks at 7 GB.
+  Lyrics get `[verse]`/`[chorus]` automatically — measured, without that structure the same words
+  came back unintelligible. On a CPU host it is opt-in (`MUSIC_ALLOW_CPU=1`) and takes 4–5
+  minutes per song. → [MUSIC.md](docs/MUSIC.md)
 
-- **Network diagnostics from chat, behind a permission you grant per user.** Seven tools —
-  `net_dns`, `net_whois`, `net_ping`, `net_trace`, `net_ports`, `net_http`, `net_speed` — answer what
-  a terminal used to: who owns a domain, what a name resolves to, whether a host answers, which
-  ports are open, what certificate a site serves, how fast the link is. They run in a container with
-  one capability and no route to the database, a `/24` is discovery only, and every call leaves a
-  24-hour audit line. Natural phrasing works: "measure the speed to `<host>`" used to be routed to a
-  web search, which measured nothing and answered from articles.
-  → [NET_TOOLS.md](docs/NET_TOOLS.md)
+- **The assistant can change what it wrote — and draw.** A document it created can be edited in
+  place and rolled back to an earlier state: the last ten versions are kept, a restore is itself a
+  new version, and a repaired `.docx`, `.xlsx` or `.pdf` is re-rendered from the stored body
+  instead of being patched byte by byte. An uploaded file is still never edited in place — its
+  bytes may be shared — so a fix is answered by a new document built from it. `write_document`
+  also gained **SVG**: a diagram, chart or icon is stored as a document, validated before it is
+  saved (no scripts, event handlers, external references or animation) and previewed as an image.
+  A drawing the model starts printing into the answer no longer arrives as a wall of markup — the
+  block is validated and stored the same way, and the answer names the file instead.
+  → [DOCUMENTS.md](docs/DOCUMENTS.md)
 
-- **Skills are installed from the admin panel, and their tool list is checked when you save one.**
-  A skill used to mean editing a tracked folder, so anything an administrator added landed in the
-  next `git status`. Two zones now: `skills/` ships with the project and is read-only in the panel,
-  `data/skills/` is written by **Admin → Skills** and stays out of git. `allowed-tools` is sorted
-  into four classes on save — offered, service down (warning), one keystroke away from a real name
-  (**blocks the save**), or a name from another harness (saved as-is, which is what makes Claude
-  Code skills installable). → [SKILLS.md](docs/SKILLS.md)
+- **Skills: four bundled procedures, and an honest account of what the assistant can do.** Chat can
+  load `net-diagnostics` (the order of network checks, what counts as proof and when to say the
+  service is unavailable), `documents` (when an answer should become a file and which format fits)
+  and `svg-graphics` (layouts, charts and CSS-only animation) beside `web-research`. A skill whose
+  tools are absent from the installation is no longer offered at all, so the assistant cannot
+  promise diagnostics it cannot run. Its self-description grew from ten capabilities to eighteen:
+  page reading, crawling, reminders, file writing and rollback, deep analysis, background tasks and
+  memory were all missing from the answer to "what can you do?". → [SKILLS.md](docs/SKILLS.md)
 
-- **The assistant writes documents, and a task can use everything chat can.** `write_document`
-  stores text as an ordinary document of yours in seven formats — Markdown, CSV, JSON and plain
-  text, plus Word (`.docx`), a spreadsheet (`.xlsx`) and PDF with a font that renders Russian —
-  with **append**, so a text log can grow — and a newly
-  written file is **not** indexed until you tick *index* on its card, because a log written every
-  fifteen minutes would otherwise be re-indexed 96 times a day. Meanwhile a background task gained
-  `chat_tool` (any chat tool, through the same permission, rate limit and audit) and the skills the
-  plan names, so an action or a task is no longer weaker than a chat turn.
-  → [DOCUMENTS.md](docs/DOCUMENTS.md) · [TASKS.md](docs/TASKS.md)
-
-- **A language you do not use is no longer a blocker.** Personalization used to demand both site
-  names at once and reset the pair when either was emptied; now each language stands alone — save
-  the Russian name and leave English blank, and only an empty pair falls back to the built-in brand.
-  → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
+- **Schedules follow the agreement, not the moment.** "Every Tuesday and Thursday at 19:45" is now
+  one weekly item holding a **set** of days instead of a single day guessed from when the sentence
+  was written, so editing or deleting it cannot leave a second copy behind. An action is queued
+  ahead of time by the **median of its own last five runs** plus a margin, bounded by ten minutes
+  and half the interval: a four-minute check no longer runs late by design while a two-second probe
+  holds the queue. → [SCHEDULER.md](docs/SCHEDULER.md)
 
 ## 🖼 Demo
 
@@ -136,9 +132,10 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ### 💬 Chat & reasoning
 - **Intelligent chat** — the request kernel (or the marker router as its fallback) sends simple questions to a fast model and complex ones to a dedicated reasoning model, in one JSON decision.
 - **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress; every tool result is bounded and a repeated call is refused.
-- **Skills** — drop a folder with a `SKILL.md` into `skills/`: its one-line description enters the prompt and its instructions load only when the model asks for them. The format is the portable one (Claude Code, opencode, pi).
+- **Skills** — instruction sets in the portable `SKILL.md` format (Claude Code, opencode, pi). The catalog of names and descriptions enters the prompt, the body loads only when the model asks, and **Admin → Skills** installs, edits, disables and deletes them without touching git; a bundled skill wins a name collision. → [SKILLS.md](docs/SKILLS.md)
 - **MCP servers** — connect external Model Context Protocol servers in the admin panel and their tools become callable, namespaced per server; a server that is down costs nothing.
 - **Deep analysis (RLM)** — a reasoning model works through your selected documents and an attached image step by step, with a sandboxed Python executor, sub-model calls, live lookups and a collapsible trace. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
+- **Network diagnostics** — DNS, whois, ping, traceroute, open ports, HTTP/TLS and link speed, each a typed tool that runs one program without a shell. The sidecar is optional, access is granted per user, and every call leaves an audit line. → [NET_TOOLS.md](docs/NET_TOOLS.md)
 - **Response styles** — neutral, academic, professional, friendly or funny, switchable in the chat header.
 - **Sessions and export** — multiple auto-titled conversations, exportable as HTML with embedded media.
 
@@ -151,10 +148,17 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Agentic tasks** — a request is planned as steps and executed with checkpoints: web search, document and history search, camera snapshots, image analysis, site study, deep analysis, image/video generation. The planner records its plan as a `write_plan` tool call, a `research` step can search, open pages and refine its own query before answering, and chat always preempts a task. → [TASKS.md](docs/TASKS.md)
 - **Depth profile** — `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend; `norm` is the historical behaviour. Editable in the admin panel.
 
+### ⏰ Reminders & scheduled actions
+- **Reminders** — ask in chat ("remind me tomorrow at nine") and the assistant stores the sentence and the moment, answers with the concrete time, and delivers it without a model; it also pops up on screen. The list lives in your profile.
+- **Scheduled actions** — "every Friday at 16:00 check the logs": a short service run with your tools that never appears in the Tasks tab, refuses to overlap itself and delivers its result to a system chat. When the work is larger than a few rounds it starts an ordinary task titled 🛠️ Scheduler.
+- **Recurrence on the wall clock** — once, every N minutes, daily, weekly or monthly; a weekly schedule can name several days, and nine stays nine across a daylight-saving change. → [SCHEDULER.md](docs/SCHEDULER.md)
+
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
 - **Document search (RAG)** — PDF, DOC, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML and images, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on, and the 🔍 search scope mirrors them live (folder, **Unfiled** root, upload dates) with no separate Apply step. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document sharing** — give another account read-only access to a document (👥): it appears in their library and is searched by their questions, while rename, move, delete and re-sharing stay with the owner.
+- **Files the assistant writes** — a report, a table or a letter as a real document (`.md`, `.csv`, `.json`, `.txt`, `.docx`, `.xlsx`, `.pdf`); it can change what it wrote and roll the change back. The file is not indexed until you tick the switch on its card. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 - **Knowledge graph** — every indexed document is mined for entities and typed relations and drawn as a 3D cloud (2D without WebGL): a document's neighbourhood, the whole corpus, paths between entities, and the source document behind each relation. It is a reading instrument, not a retriever: retrieval use is opt-in because measurements show no gain. → [GRAPH.md](docs/GRAPH.md)
@@ -270,6 +274,9 @@ Every message is classified by the router model into one of these categories. Th
 | `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current frame; the vision model analyses it | Snapshot description + SLM + history |
 | `[-REMEMBER-]` | **Remember a fact** | Rule-based SLM extraction (background, CPU-only) | — (writes to long-term memory) |
 | `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp (images, and Wan video) / LTX-Video in their own GPU containers | — (no LLM context) |
+| `[-NET-]` | **Network diagnostics** | One typed `net_*` tool through the sidecar (dig, whois, ping, mtr, nmap, iperf3) — no shell | Tool result + SLM + history |
+| `[-SCHEDULE-]` | **Reminder or scheduled action** | Ordinary chat with `schedule_reminder` / `schedule_action` | The tool's confirmation naming the stored moment |
+| `[-WRITE-]` | **Create a document** | Ordinary chat with `write_document` | The tool's confirmation naming the file |
 | `none` | **Chat with tools** | Multimodal model + native tool calling | Tool results + SLM + history |
 
 **How it behaves in practice:**
@@ -339,7 +346,7 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 
 | Profile | RAM | VRAM | Notes |
 |---|---|---|---|
-| **Core** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time |
+| **Base stack measured here** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time; Qdrant, SearXNG and Crawl4AI are optional profiles, so a stack without them costs less |
 | **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded; `with-voice` starts ASR and TTS together, `with-tts-piper` the TTS backend alone |
 | **Kokoro TTS** (`with-tts-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | the TTS backend alone; `with-voice-kokoro` adds the ASR container. +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
 | **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; `with-whisper-cpu` / `with-whisper-gpu` start ASR alone; the planner budgets `WHISPER_RAM_MB` |
@@ -347,7 +354,9 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 | **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |
 | **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card; **recommended from 24 GB VRAM** |
 | **SuperLocalMemory** (`with-slm`) | ~0.5 GB (planner budget 2 GB) | — | CPU embeddings |
+| **Network diagnostics** (`with-net-tools`) | **~11 MiB** | — | the sidecar measured idle; no published port, no route to PostgreSQL or Redis |
 | **Reranker** (optional, off by default) | ~0.9 GB | — | `bge-reranker-v2-m3`, `cpu_only` group, never takes a GPU slot |
+| **Music** (`with-music`) | GPU: ~6 GB resident (offloaded weights) / CPU: **15 GB** | **6.9 GB peak** (5.5 GB idle) | ACE-Step 1.5 2B turbo + 0.6B LM; 30 s Russian song in 12–15 s on a 16 GB card, 4–5 min on CPU (~8x real time). Image 20.8 GB (GPU) or 11.8 GB (CPU), weights 11 GB |
 
 The TTS profiles are mutually exclusive (Piper is the default, Kokoro the quality option), and so
 are the video profiles (LTX is the default, Wan the quality option). Both TTS backends run on the
@@ -370,6 +379,7 @@ measured ~98 s for a single 256×192 second and needs more than 12 GB of RAM at 
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
 | Video — LTX (up to 10 s) | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
 | Video — Wan (5 s) | ⚠️ 512×288×121, encoder offloaded | ✅ 832×480×121, encoder offloaded | ✅ 832×480×121 (209 s) | ❌ refused (needs a GPU) |
+| Music — songs from lyrics | ⚠️ 2B turbo fits, but the chat model must be evicted | ✅ 2B turbo (6.9 GB peak) | ✅ 2B turbo (12–15 s per 30 s song) | ⚠️ opt-in `MUSIC_ALLOW_CPU=1`, ~4 min per song and 15 GB RAM |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |

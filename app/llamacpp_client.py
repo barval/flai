@@ -649,6 +649,7 @@ class AbstractLlamaBackend:
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
@@ -792,6 +793,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -827,14 +829,21 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
             if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
-                # The model drifted into malformed tool syntax and repeated it until the
-                # server gave up. Answering without tools is what shipped before tools —
-                # a fallback, not a second failure.
-                self.logger.warning(f"chat_stream: malformed tool call from {model_type}, retrying without tools")
-                payload = _payload_without_tools(payload)
+                # A malformed tool call is a slip of one generation, not of the
+                # request: generate the round again with the tools first, and drop
+                # the catalogue only when it fails twice.
+                self.logger.warning(f"chat_stream: malformed tool call from {model_type}, retrying the round with tools")
                 response = requests.post(
                     f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                 )
+                if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                    self.logger.warning(
+                        f"chat_stream: malformed tool call twice from {model_type}, retrying without tools"
+                    )
+                    payload = _payload_without_tools(payload)
+                    response = requests.post(
+                        f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                    )
             if response.status_code != 200:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -865,6 +874,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             _stream_usage: dict[str, Any] | None = None
             # Accumulate tool calls from streaming chunks
             _tool_calls_by_index: dict[int, dict[str, Any]] = {}
+            _tool_call_notified: set[int] = set()
 
             for line in response.iter_lines():
                 if not line:
@@ -931,6 +941,17 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                                     tc["function"]["arguments"] += func_delta["arguments"]
                                 if tc_delta.get("id"):
                                     tc["id"] = tc_delta["id"]
+                            name_so_far = _tool_calls_by_index[idx]["function"]["name"]
+                            if name_so_far and idx not in _tool_call_notified and tool_call_started is not None:
+                                # Called on every delta until it says the label is final:
+                                # the name is known first, the format a moment later.
+                                args_so_far = _tool_calls_by_index[idx]["function"]["arguments"]
+                                try:
+                                    if tool_call_started(name_so_far, args_so_far):
+                                        _tool_call_notified.add(idx)
+                                except Exception:  # noqa: BLE001 - a reporter must not break the stream
+                                    _tool_call_notified.add(idx)
+                                    self.logger.warning("tool_call_started callback failed", exc_info=True)
                 except json.JSONDecodeError:
                     continue
             if _stream_usage:
@@ -1254,6 +1275,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1320,13 +1342,30 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                     )
                     if response.status_code == 500 and payload.get("tools") and _tool_call_was_unparsable(response):
+                        # The model drifted into malformed tool syntax — a slip of that
+                        # one generation, not of the request. Dropping the catalogue was
+                        # the only fallback and it answered a document request with an
+                        # apology instead of the file (a 22 KB call the server could not
+                        # parse), so the round is generated again with the tools it needs.
                         self.logger.warning(
-                            f"chat_stream: malformed tool call from {model_type}, retrying without tools"
+                            f"chat_stream: malformed tool call from {model_type}, retrying the round with tools"
                         )
-                        payload = _payload_without_tools(payload)
                         response = requests.post(
                             f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                         )
+                        if (
+                            response.status_code == 500
+                            and payload.get("tools")
+                            and _tool_call_was_unparsable(response)
+                        ):
+                            # Twice in a row is a habit, not luck: answer without tools.
+                            self.logger.warning(
+                                f"chat_stream: malformed tool call twice from {model_type}, retrying without tools"
+                            )
+                            payload = _payload_without_tools(payload)
+                            response = requests.post(
+                                f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                            )
                     if response.status_code != 200:
                         # Retry on 502 (typical transient failure) OR on
                         # "Failed to load image" 400 (race condition when
@@ -1390,6 +1429,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     _reasoning_chars = 0
                     # Accumulate tool calls from streaming chunks
                     _tool_calls_by_index: dict[int, dict[str, Any]] = {}
+                    _tool_call_notified: set[int] = set()
 
                     for line in response.iter_lines():
                         if not line:
@@ -1462,6 +1502,21 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                             tc["function"]["arguments"] += func_delta["arguments"]
                                         if tc_delta.get("id"):
                                             tc["id"] = tc_delta["id"]
+                                    name_so_far = _tool_calls_by_index[idx]["function"]["name"]
+                                    if (
+                                        name_so_far
+                                        and idx not in _tool_call_notified
+                                        and tool_call_started is not None
+                                    ):
+                                        args_so_far = _tool_calls_by_index[idx]["function"]["arguments"]
+                                        try:
+                                            if tool_call_started(name_so_far, args_so_far):
+                                                _tool_call_notified.add(idx)
+                                        except Exception:  # noqa: BLE001 - a reporter must not break the stream
+                                            _tool_call_notified.add(idx)
+                                            self.logger.warning(
+                                                "tool_call_started callback failed", exc_info=True
+                                            )
                         except json.JSONDecodeError:
                             continue
                     if _stream_usage:
@@ -1796,6 +1851,7 @@ class LlamaCppClient:
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
         tool_choice: str | None = None,
+        tool_call_started: Callable[[str, str], bool] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1829,6 +1885,7 @@ class LlamaCppClient:
             temperature=temperature,
             status_callback=status_callback,
             tool_choice=tool_choice,
+            tool_call_started=tool_call_started,
         )
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:

@@ -1,4 +1,4 @@
-# Network diagnostics — FLAI v13.5
+# Network diagnostics — FLAI v13.6
 
 FLAI could answer "what does this page say" (`read_page`, the crawler) but not "does
 this host answer at all", "what does DNS say", "which ports are open", "how fast is

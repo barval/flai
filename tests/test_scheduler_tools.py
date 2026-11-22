@@ -504,3 +504,51 @@ def test_start_task_refuses_outside_a_scheduler_run(env):
     from app.tasks import store as task_store
 
     assert task_store.get_tasks_by_user(LOGIN) == []
+
+
+def test_two_weekdays_are_one_schedule(env):
+    """The request that found the gap: «every Tuesday and Thursday at 19:45»."""
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "schedule_reminder",
+        {"when": "19:45", "text": "🔔 Английский", "repeat": "weekly", "weekdays": [2, 4]},
+        _ctx(),
+    )
+
+    assert "⚠️" not in answer
+    items = scheduler_store.list_items(LOGIN)
+    assert len(items) == 1
+    item = items[0]
+    # The tool takes ISO numbers (Monday = 1); the column stores Python's (Monday = 0).
+    assert item["weekdays"] == [1, 3]
+    local = item["next_run_at"].astimezone(ZoneInfo(ZONE))
+    assert local.weekday() in (1, 3)
+    assert (local.hour, local.minute) == (19, 45)
+
+
+@pytest.mark.parametrize("weekdays", [[0], [8], ["x"]])
+def test_a_weekday_set_that_cannot_be_used_asks_again(env, weekdays):
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "schedule_reminder",
+        {"when": "19:45", "text": "🔔", "repeat": "weekly", "weekdays": weekdays},
+        _ctx(),
+    )
+
+    assert answer.startswith("⚠️ ")
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_weekdays_without_a_weekly_repeat_are_refused(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "schedule_reminder",
+        {"when": "19:45", "text": "🔔", "repeat": "daily", "weekdays": [2, 4]},
+        _ctx(),
+    )
+
+    assert answer.startswith("⚠️ ")
+    assert scheduler_store.list_items(LOGIN) == []

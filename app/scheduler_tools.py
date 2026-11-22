@@ -93,6 +93,40 @@ def parse_time_of_day(raw: str | None) -> time | None:
     return None
 
 
+def parse_weekdays(raw) -> list[int]:
+    """Python weekdays (Monday = 0) from the ISO numbers a tool call carries (Monday = 1).
+
+    An empty list means nothing usable was given, so the caller can tell "not named" from
+    "named and wrong". The conversion lives here because the stored column is Python's
+    numbering, which is what the recurrence function already reads.
+    """
+    if raw in (None, ""):
+        return []
+    values = raw if isinstance(raw, (list, tuple, set)) else [raw]
+    days = set()
+    for value in values:
+        try:
+            day = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        if 1 <= day <= 7:
+            days.add(day - 1)
+    return sorted(days)
+
+
+def _first_weekly(local_now: datetime, at: time, days: list[int], zone: ZoneInfo) -> datetime:
+    """The soonest moment at ``at`` on one of ``days``, strictly after ``local_now``."""
+    best = None
+    for day in days:
+        ahead = (day - local_now.weekday()) % 7
+        candidate = datetime.combine(local_now.date() + timedelta(days=ahead), at, tzinfo=zone)
+        if candidate <= local_now:
+            candidate = candidate + timedelta(days=7)
+        if best is None or candidate < best:
+            best = candidate
+    return best
+
+
 def _repeat_of(raw: str | None) -> str:
     repeat = str(raw or "once").strip().lower()
     if repeat not in REPEATS:
@@ -110,6 +144,7 @@ def plan(
     zone_name: str,
     now=None,
     in_minutes=None,
+    weekdays=None,
 ):
     """Resolve the phrase into a concrete moment, the recurrence fields and the local time.
 
@@ -125,6 +160,12 @@ def plan(
     current = now or datetime.now(UTC)
     zone = zone_for(zone_name)
     repeat = _repeat_of(repeat_raw)
+
+    days = parse_weekdays(weekdays)
+    if weekdays not in (None, "", [], ()) and not days:
+        raise ScheduleRefusalError("weekdays_unclear")
+    if days and repeat != "weekly":
+        raise ScheduleRefusalError("weekdays_not_weekly")
 
     # The interval is resolved before the moment, because every path below stores it and the
     # floor applies to all of them: a five-minute action on a CPU-only host must be refused
@@ -153,11 +194,16 @@ def plan(
     bare = parse_time_of_day(when_raw)
     if bare is not None:
         local_now = current.astimezone(zone)
-        local = datetime.combine(local_now.date(), bare, tzinfo=zone)
-        if local <= local_now:
-            # "13:23" said at 13:30 means tomorrow, not a refusal.
-            local = local + timedelta(days=1)
-        return local.astimezone(UTC), local, _fields(local, repeat, interval, zone_name)
+        if days:
+            # "Every Tuesday and Thursday at 19:45" names a set, so the first firing is the
+            # soonest day of that set, not today's date with a weekday bolted on.
+            local = _first_weekly(local_now, bare, days, zone)
+        else:
+            local = datetime.combine(local_now.date(), bare, tzinfo=zone)
+            if local <= local_now:
+                # "13:23" said at 13:30 means tomorrow, not a refusal.
+                local = local + timedelta(days=1)
+        return local.astimezone(UTC), local, _fields(local, repeat, interval, zone_name, days)
 
     if in_minutes not in (None, ""):
         try:
@@ -168,7 +214,7 @@ def plan(
             raise ScheduleRefusalError("time_unclear")
         moment = current + timedelta(minutes=minutes)
         local = moment.astimezone(zone)
-        return moment, local, _fields(local, repeat, interval, zone_name)
+        return moment, local, _fields(local, repeat, interval, zone_name, days)
 
     moment_local = parse_when(when_raw)
     if moment_local is None:
@@ -176,6 +222,11 @@ def plan(
 
     local = moment_local.replace(tzinfo=zone)
     moment = local.astimezone(UTC)
+    if days and local.weekday() not in days:
+        # A date that is not one of the named weekdays cannot be the first firing of a
+        # weekly set; the set decides, and the date only supplied the time of day.
+        local = _first_weekly(current.astimezone(zone), local.time(), days, zone)
+        moment = local.astimezone(UTC)
 
     if moment <= current:
         if repeat == "once":
@@ -186,7 +237,7 @@ def plan(
             {
                 "repeat": repeat,
                 "every_minutes": interval,
-                "weekday": local.weekday(),
+                "weekdays": days or [local.weekday()],
                 "day_of_month": local.day,
                 "time_of_day": local.time(),
                 "timezone": zone_name,
@@ -198,15 +249,23 @@ def plan(
             raise ScheduleRefusalError("in_the_past", when=local)
         local = moment.astimezone(zone)
 
-    return moment, local, _fields(local, repeat, interval, zone_name)
+    return moment, local, _fields(local, repeat, interval, zone_name, days)
 
 
-def _fields(local: datetime, repeat: str, interval, zone_name: str) -> dict:
-    """The recurrence columns for a firing at ``local``."""
+def _fields(local: datetime, repeat: str, interval, zone_name: str, days=None) -> dict:
+    """The recurrence columns for a firing at ``local``.
+
+    ``weekdays`` exists only for a weekly item: a set of Python weekdays (Monday = 0). Other
+    repeats keep it NULL, because a daily item's weekday is meaningless and a column full of
+    values nobody reads is how a later reader is misled.
+    """
+    weekdays = None
+    if repeat == "weekly":
+        weekdays = list(days or [local.weekday()])
     return {
         "repeat": repeat,
         "time_of_day": local.time().replace(second=0, microsecond=0),
-        "weekday": local.weekday(),
+        "weekdays": weekdays,
         "day_of_month": local.day,
         "every_minutes": interval,
         "timezone": zone_name,
@@ -224,6 +283,7 @@ def create_item(
     zone_name: str = "UTC",
     now=None,
     in_minutes=None,
+    weekdays=None,
 ):
     """Store one scheduled item; return ``(item_id, local_moment)``."""
     from app import scheduler_store
@@ -237,7 +297,14 @@ def create_item(
         raise ScheduleRefusalError("too_long", limit=MAX_BODY_CHARS)
 
     moment, local, fields = plan(
-        kind, when_raw, repeat, every_minutes, zone_name, now=now, in_minutes=in_minutes
+        kind,
+        when_raw,
+        repeat,
+        every_minutes,
+        zone_name,
+        now=now,
+        in_minutes=in_minutes,
+        weekdays=weekdays,
     )
     item_id = scheduler_store.create_item(
         user_id,
@@ -247,7 +314,7 @@ def create_item(
         repeat=fields["repeat"],
         at=moment,
         time_of_day=fields["time_of_day"],
-        weekday=fields["weekday"],
+        weekdays=fields["weekdays"],
         day_of_month=fields["day_of_month"],
         every_minutes=fields["every_minutes"],
         timezone_name=fields["timezone"],

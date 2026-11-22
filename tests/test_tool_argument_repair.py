@@ -66,3 +66,33 @@ def test_a_broken_argument_string_is_reported_not_silently_emptied():
 @pytest.mark.unit
 def test_an_empty_argument_string_is_a_valid_empty_call():
     assert parse_tool_arguments("", None) == ({}, True)
+
+
+@pytest.mark.unit
+def test_raw_newlines_inside_a_string_are_accepted():
+    """A long SVG arrives with literal newlines; strict JSON refuses them.
+
+    Measured: a 19 KB drawing was rejected here, and the malformed call then
+    poisoned the next request because llama-server re-parses the history.
+    """
+    raw = '{"name": "scene.svg", "format": "svg", "content": "<svg>\\n<text>x</text></svg>"}'
+    arguments, ok = parse_tool_arguments(raw, None)
+
+    assert ok is True
+    assert "<svg>" in arguments["content"]
+
+
+@pytest.mark.unit
+def test_an_unparsable_call_enters_the_transcript_with_empty_arguments():
+    from app.tools import transcript_safe_calls
+
+    calls = [
+        {"id": "a", "function": {"name": "write_document", "arguments": "{not json"}},
+        {"id": "b", "function": {"name": "web_search", "arguments": '{"query": "x"}'}},
+    ]
+    safe = transcript_safe_calls(calls, {})
+
+    assert safe[0]["function"]["arguments"] == "{}"
+    assert safe[1] is calls[1]
+    # The original object the caller still executes is untouched.
+    assert calls[0]["function"]["arguments"] == "{not json"

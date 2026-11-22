@@ -95,6 +95,7 @@ The full key set, and every one of them is a documented flag of the script:
 | `--with-voice-kokoro` | Whisper ASR + Kokoro TTS |
 | `--with-video` | LTX-Video (fast, clips up to 10 s) |
 | `--with-video-wan` | Wan 2.2 (quality, 5 s, GPU only) |
+| `--with-music` | ACE-Step 1.5 music generation (`flai-music`, MIT; ~11 GB of weights on first start; writes `MUSIC_URL`) |
 | `--cpu` | CPU-only mode |
 | `--gpu-nvidia` / `--gpu-amd` / `--gpu-intel` | the platform (AMD and Intel are experimental) |
 | `--platform=NAME` | the same as one option: `auto|nvidia|amd|intel|cpu` |

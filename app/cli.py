@@ -1712,7 +1712,7 @@ def rag_reindex(user, doc):
 
 
 @click.command("kernel-eval")
-@click.option("--dataset", required=True, help="JSONL with {message, lang, expected_intent, expected_tools}")
+@click.option("--dataset", required=True, help="JSONL with {message, lang, expected_intent, expected_tools, expected_skills}")
 @click.option("--mode", type=click.Choice(["router", "kernel", "both"]), default="both", show_default=True)
 @click.option("--out", default="", help="Write the metrics to this JSON file")
 @with_appcontext
@@ -1743,8 +1743,14 @@ def kernel_eval(dataset, mode, out):
         click.echo(f"intent accuracy  {report['intent_accuracy']:.3f}")
         click.echo(f"tool exact       {report['tool_exact']:.3f}")
         click.echo(f"false tools      {report['false_tools']}")
+        click.echo(f"skill exact      {report['skill_exact']:.3f}")
+        click.echo(f"false skills     {report['false_skills']}")
+        click.echo(f"missed skills    {report['missed_skills']}")
         for lang, bucket in sorted(report["by_lang"].items()):
-            click.echo(f"  {lang}: intent {bucket['intent_accuracy']:.3f} on {bucket['cases']} cases")
+            click.echo(
+                f"  {lang}: intent {bucket['intent_accuracy']:.3f} on {bucket['cases']} cases,"
+                f" skills {bucket['skill_exact']:.3f}"
+            )
         if report["confusions"]:
             click.echo("  confusions (expected -> got):")
             for (expected, got), count in sorted(report["confusions"].items(), key=lambda item: -item[1]):

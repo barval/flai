@@ -64,7 +64,39 @@ def test_an_existing_name_gets_a_suffix_and_nothing_is_overwritten(writer_env):
 
     assert first.filename == "note.md"
     assert second.filename == "note (2).md"
+    # The caller asked for "note" both times; the result remembers what it asked for,
+    # which is what lets the tool explain the rename instead of hiding it.
+    assert second.requested_name == "note.md"
     assert (writer_env / LOGIN / f"{first.id}.md").read_text(encoding="utf-8").strip() == "one"
+
+
+def test_xml_markup_in_the_arguments_is_refused(writer_env):
+    """Measured: a model sent a name with a `<parameter>` tag glued into the value."""
+    with pytest.raises(DocumentWriteError) as caught:
+        write_document_file(LOGIN, "Пеликан на велосипеде.svg</parameter>", "<svg/>", fmt="")
+
+    assert caught.value.code == "argument_markup"
+    assert not list(writer_env.glob(f"{LOGIN}/*"))
+
+
+def test_a_missing_format_follows_the_svg_name(writer_env):
+    doc = write_document_file(LOGIN, "scene.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>', fmt="")
+
+    assert doc.filename == "scene.svg"
+
+
+def test_the_answer_explains_a_renamed_file(writer_env):
+    """Measured: the model told the user the name it asked for while the file had another."""
+    from app.tools import _exec_write_document
+
+    ctx = {"user_id": LOGIN, "lang": "ru"}
+    first = _exec_write_document(ctx, name="Схема", content="one", format="md")
+    second = _exec_write_document(ctx, name="Схема", content="two", format="md")
+
+    assert "Схема.md" in first
+    assert "занято" not in first
+    assert "Схема (2).md" in second
+    assert "занято" in second
 
 
 def test_csv_quotes_values_that_need_it(writer_env):
@@ -187,3 +219,40 @@ def test_two_writers_of_the_same_name_do_not_collide(writer_env, test_app):
 
     assert not errors
     assert sorted(names) == ["note (2).md", "note.md"]
+
+
+def test_a_pasted_svg_becomes_a_document(writer_env):
+    """Measured: a 13 000-character ```svg block reached the user as code, not as a file."""
+    import logging
+
+    from app.queue import RedisRequestQueue
+
+    class _Stub:
+        logger = logging.getLogger("test")
+
+    text = (
+        "Вот схема.\n```svg\n"
+        '<svg xmlns="http://www.w3.org/2000/svg"><title>Пеликан</title>'
+        '<circle cx="5" cy="5" r="4"/></svg>\n```'
+    )
+    cleaned, saved = RedisRequestQueue._document_from_svg_answer(_Stub(), text, LOGIN, "ru")
+
+    assert saved == "Пеликан.svg"
+    assert "```svg" not in cleaned
+    assert "Пеликан.svg" in cleaned
+    assert "Вот схема." in cleaned
+
+
+def test_an_unsafe_pasted_svg_stays_text(writer_env):
+    import logging
+
+    from app.queue import RedisRequestQueue
+
+    class _Stub:
+        logger = logging.getLogger("test")
+
+    text = '```svg\n<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script></svg>\n```'
+    cleaned, saved = RedisRequestQueue._document_from_svg_answer(_Stub(), text, LOGIN, "ru")
+
+    assert saved is None
+    assert cleaned == text

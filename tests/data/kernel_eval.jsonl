@@ -35,3 +35,13 @@
 {"message": "what is 2 + 2 * 2?", "lang": "en", "expected_intent": "none", "expected_tools": ["calculator"]}
 {"message": "сколько лет Игорю Соколову?", "lang": "ru", "expected_intent": "rag", "note": "a named private person lives in the library, not on the web"}
 {"message": "how old is Igor Sokolov?", "lang": "en", "expected_intent": "rag", "note": "the kernel omitted the marker router's named-person rule"}
+{"message": "пропингуй example.com и скажи, отвечает ли он", "lang": "ru", "expected_intent": "none", "expected_tools": ["net_ping"], "expected_skills": ["net-diagnostics"], "note": "a measurement: the skill carries the order of checks"}
+{"message": "ping example.com and tell me whether it answers", "lang": "en", "expected_intent": "none", "expected_tools": ["net_ping"], "expected_skills": ["net-diagnostics"]}
+{"message": "какие MX-записи у домена example.com", "lang": "ru", "expected_intent": "none", "expected_tools": ["net_dns"], "expected_skills": ["net-diagnostics"]}
+{"message": "сохрани эти данные в CSV-файл", "lang": "ru", "expected_intent": "none", "expected_tools": ["write_document"], "expected_skills": ["documents"], "note": "the format choice is what the skill adds"}
+{"message": "make a report file from these numbers", "lang": "en", "expected_intent": "none", "expected_tools": ["write_document"], "expected_skills": ["documents"]}
+{"message": "привет, как дела?", "lang": "ru", "expected_intent": "none", "expected_tools": [], "expected_skills": [], "note": "trap: small talk must activate nothing"}
+{"message": "посчитай 17*23", "lang": "ru", "expected_intent": "none", "expected_tools": ["calculator"], "expected_skills": [], "note": "trap: arithmetic is not a skill"}
+{"message": "найди в договоре пункт про неустойку", "lang": "ru", "expected_intent": "rag", "expected_tools": [], "expected_skills": [], "note": "trap: the documents skill is about writing files, not about reading the library"}
+{"message": "напиши функцию на Python, которая переворачивает список", "lang": "ru", "expected_intent": "reasoning", "expected_tools": [], "expected_skills": [], "note": "trap: the word write does not mean a document"}
+{"message": "покажи, что сейчас в офисе", "lang": "ru", "expected_intent": "camera", "expected_tools": [], "expected_skills": [], "note": "trap: the camera pipeline runs no chat loop"}

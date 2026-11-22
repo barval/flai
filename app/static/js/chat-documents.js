@@ -288,10 +288,14 @@ function renderDocItem(doc) {
         : (shareCount > 0
             ? `<span class="document-shared-badge document-share-count" title="${t('documents_shared_with')}: ${escapeHtml((doc.shared_with || []).join(', '))}">👥 ${shareCount}</span>`
             : '');
+    // The graph is built from an indexed document's chunks, and the graph API asks
+    // for `index_status = 'indexed'`. A generated SVG is stored `not_indexed` and
+    // has no entities at all, so the button opened an empty canvas on every drawing.
+    const graphAvailable = doc.index_status === 'indexed' || doc.index_status === 'stale';
     // The graph is readable for a shared document too, so its button sits
     // outside the owner-only block.
     const documentActions = `<div class="document-actions">
-                <button class="graph-document-button" data-graph-doc="${doc.id}" title="${t('documents_view_in_graph')}">🕸️</button>
+                ${graphAvailable ? `<button class="graph-document-button" data-graph-doc="${doc.id}" title="${t('documents_view_in_graph')}">🕸️</button>` : ''}
                 ${sharedBy ? '' : `<button class="share-document-button" title="${t('documents_share')}">👥</button>
                 <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
@@ -314,7 +318,7 @@ function renderDocItem(doc) {
             </div>
             <div class="document-side">
                 ${documentActions}
-                ${doc.source === 'generated' ? `
+                ${doc.source === 'generated' && !String(doc.filename || '').toLowerCase().endsWith('.svg') ? `
                 <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
                     <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
                     ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import calendar
 import logging
+import math
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -60,12 +61,83 @@ def _at(item: dict, day: datetime) -> datetime:
     ).replace(tzinfo=zone)
 
 
+# How many of an item's own completed runs the median is taken over. Few enough to react to
+# a change in the work, many enough that one slow day does not redefine the schedule.
+ADAPTIVE_LEAD_RUNS = 5
+
+
+def median_run_seconds(item_id: str, limit: int = ADAPTIVE_LEAD_RUNS) -> float | None:
+    """Median wall-clock duration of the item's last completed runs, or None without history."""
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at))
+                   ) AS median_seconds
+            FROM (
+                SELECT started_at, finished_at
+                FROM scheduler_runs
+                WHERE item_id = %s AND status = 'completed'
+                  AND started_at IS NOT NULL AND finished_at IS NOT NULL
+                ORDER BY finished_at DESC
+                LIMIT %s
+            ) recent
+            """,
+            (str(item_id), int(limit)),
+        )
+        row = c.fetchone()
+    value = row.get("median_seconds") if row else None
+    return float(value) if value is not None else None
+
+
+def lead_ceiling_minutes(default: int = 10) -> int:
+    """The largest lead the adaptive history may ask for, from the panel settings."""
+    from app.config import setting
+
+    try:
+        return max(1, int(setting("SCHEDULER_LEAD_MAX_MIN", default) or default))
+    except (TypeError, ValueError):
+        return default
+
+
+def adaptive_lead_minutes(item: dict, configured: int) -> int | None:
+    """Lead by what the item's own runs cost, or None when there is nothing to go on.
+
+    A constant assumes every check costs the same; measured, they do not. The median of the
+    last few completed runs plus a margin is the smallest lead that has actually been enough,
+    and the ceiling keeps one unusually slow day from queueing the next run ten minutes early.
+    """
+    from app.config import setting
+
+    enabled = str(setting("SCHEDULER_ADAPTIVE_LEAD", True)).strip().lower()
+    if enabled in ("0", "false", "off", "no"):
+        return None
+    item_id = item.get("id")
+    if not item_id:
+        return None
+    median = median_run_seconds(str(item_id))
+    if median is None:
+        return None
+    try:
+        margin = max(0, int(setting("SCHEDULER_LEAD_MARGIN_S", 30) or 0))
+    except (TypeError, ValueError):
+        margin = 30
+    wanted = math.ceil((median + margin) / 60)
+    return max(int(configured), min(lead_ceiling_minutes(), wanted))
+
+
 def action_lead_minutes(item: dict, configured: int | None = None) -> int:
     """How early an action is queued, capped by its own interval.
 
     Half the interval keeps the queue ahead of the target without racing the run it
     replaced; with the one-minute default and a five-minute floor the cap never binds, and
     it is kept only for an installation that sets a lead larger than its own cadence.
+
+    With history the lead is the item's own median duration plus the margin (v13.6); the
+    configured value stays the floor and the answer when there is nothing to measure.
     """
     if configured is None:
         from app.config import setting
@@ -75,6 +147,9 @@ def action_lead_minutes(item: dict, configured: int | None = None) -> int:
         except (TypeError, ValueError):
             configured = 1
     lead = max(0, int(configured))
+    adaptive = adaptive_lead_minutes(item, lead)
+    if adaptive is not None:
+        lead = adaptive
     if str(item.get("repeat") or "once") != "minutes":
         return lead
     try:
@@ -94,6 +169,29 @@ def is_due_now(item: dict, moment: datetime, max_lead: int) -> bool:
     if str(item.get("kind") or "reminder") == "action":
         return moment >= scheduled - timedelta(minutes=action_lead_minutes(item, max_lead))
     return moment >= scheduled
+
+
+def _weekday_set(item: dict) -> list[int]:
+    """The weekdays a weekly item fires on, Monday = 0.
+
+    A weekly item carries a set, so "every Tuesday and Thursday" is one schedule. A row
+    written before the set existed carries a single ``weekday`` and is read as a set of one,
+    which is also the fallback for a set that cannot be used.
+    """
+    raw = item.get("weekdays")
+    if raw is None:
+        raw = [item["weekday"]] if item.get("weekday") is not None else [0]
+    if isinstance(raw, (int, str)):
+        raw = [raw]
+    days = set()
+    for value in raw:
+        try:
+            day = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= day <= 6:
+            days.add(day)
+    return sorted(days) or [0]
 
 
 def next_after(item: dict, moment: datetime) -> datetime | None:
@@ -122,13 +220,15 @@ def next_after(item: dict, moment: datetime) -> datetime | None:
         return candidate
 
     if repeat == "weekly":
-        weekday = int(item.get("weekday") if item.get("weekday") is not None else 0)
-        candidate = _at(item, local)
-        ahead = (weekday - local.weekday()) % 7
-        candidate = _at(item, local + timedelta(days=ahead))
-        if candidate <= local:
-            candidate = _at(item, local + timedelta(days=ahead + 7))
-        return candidate
+        first = None
+        for weekday in _weekday_set(item):
+            ahead = (weekday - local.weekday()) % 7
+            candidate = _at(item, local + timedelta(days=ahead))
+            if candidate <= local:
+                candidate = _at(item, local + timedelta(days=ahead + 7))
+            if first is None or candidate < first:
+                first = candidate
+        return first
 
     if repeat == "monthly":
         day = int(item.get("day_of_month") or 1)
@@ -581,11 +681,12 @@ def tick(app, now: datetime | None = None) -> dict:
     _cancel_overdue(app, moment)
     _sweep_stale_runs(app, moment)
     counts = {"delivered": _deliver_ready(app, moment), "skipped": 0, "failed": 0, "missed": 0}
-    lead = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 1) or 0)
-    for item in scheduler_store.due_items(moment, action_lead_minutes=lead):
-        # The query uses the widest lead any item could have; each item is then judged by
-        # its own, which is capped at half its interval for a frequent one.
-        if not is_due_now(item, moment, lead):
+    configured = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 1) or 0)
+    # The query uses the widest lead any item could have — the adaptive ceiling — while each
+    # item is judged by its own, which may be its measured median or the configured value.
+    widest = max(configured, lead_ceiling_minutes())
+    for item in scheduler_store.due_items(moment, action_lead_minutes=widest):
+        if not is_due_now(item, moment, configured):
             continue
         result = _fire(app, item, moment)
         counts["delivered"] += result["delivered"]

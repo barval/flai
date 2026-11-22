@@ -11,7 +11,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "13.5"
+APP_VERSION = "13.6"
 
 
 def setting(name: str, default: Any = None) -> Any:
@@ -138,6 +138,16 @@ def load_config(app):
     # Wan on a CPU-only host is ~90 minutes for a 5-second clip and needs more
     # RAM than the probe container had — refused by default, opt-in only.
     app.config["WAN_VIDEO_ALLOW_CPU"] = os.getenv("WAN_VIDEO_ALLOW_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+
+    # Music generation (ACE-Step 1.5 sidecar, MIT). Off unless a URL is set,
+    # because the container ships under its own profile `with-music`.
+    app.config["MUSIC_URL"] = os.getenv("MUSIC_URL", "").strip()
+    app.config["MUSIC_ENABLED"] = bool(app.config["MUSIC_URL"])
+    app.config["MUSIC_TIMEOUT_S"] = int(os.getenv("MUSIC_TIMEOUT_S", 900))
+    app.config["MUSIC_MODEL"] = os.getenv("MUSIC_MODEL", "acestep-v15-turbo")
+    app.config["MUSIC_LM_MODEL"] = os.getenv("MUSIC_LM_MODEL", "acestep-5Hz-lm-0.6B")
+    app.config["MUSIC_DEFAULT_DURATION_S"] = int(os.getenv("MUSIC_DEFAULT_DURATION_S", 30))
+    app.config["MUSIC_MAX_DURATION_S"] = int(os.getenv("MUSIC_MAX_DURATION_S", 600))
     app.config["WAN_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("WAN_VIDEO_CPU_TIME_BUDGET_S", "0"))
 
     # VRAM and RAM policy. These used to be read with ``os.getenv`` from deep
@@ -286,6 +296,15 @@ def load_config(app):
     app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
     # A run takes seconds, so one minute of lead is enough to have the answer ready on time.
     app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "1"))
+    # Measured, not assumed: the lead follows the median duration of the item's own
+    # completed runs plus a margin, capped so one slow day does not redefine the schedule.
+    app.config["SCHEDULER_ADAPTIVE_LEAD"] = os.getenv("SCHEDULER_ADAPTIVE_LEAD", "1").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    app.config["SCHEDULER_LEAD_MARGIN_S"] = int(os.getenv("SCHEDULER_LEAD_MARGIN_S", "30"))
+    app.config["SCHEDULER_LEAD_MAX_MIN"] = int(os.getenv("SCHEDULER_LEAD_MAX_MIN", "10"))
     app.config["SCHEDULER_RUN_ROUNDS"] = int(os.getenv("SCHEDULER_RUN_ROUNDS", "3"))
     app.config["SCHEDULER_RUN_TIMEOUT_S"] = int(os.getenv("SCHEDULER_RUN_TIMEOUT_S", "180"))
     app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))

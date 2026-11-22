@@ -948,6 +948,71 @@ def update_document_size(doc_id, file_size):
         conn.cursor().execute("UPDATE documents SET file_size = %s WHERE id = %s", (file_size, doc_id))
 
 
+# How many states of one generated document are kept. A version is the body a rendered file
+# was drawn from; ten is enough to undo a mistake and small enough to stay invisible.
+DOCUMENT_VERSION_KEEP = 10
+
+
+def add_document_version(document_id, version, fmt, content="", rows=None, sheets=None, note=""):
+    """Record one state of a generated document, dropping what falls past the retention."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO document_versions (id, document_id, version, format, content, rows, sheets, note)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+            """,
+            (
+                str(uuid.uuid4()),
+                document_id,
+                version,
+                fmt,
+                content,
+                json.dumps(rows, ensure_ascii=False) if rows is not None else None,
+                json.dumps(sheets, ensure_ascii=False) if sheets is not None else None,
+                note,
+            ),
+        )
+        c.execute(
+            "DELETE FROM document_versions WHERE document_id = %s AND version <= %s",
+            (document_id, version - DOCUMENT_VERSION_KEEP),
+        )
+
+
+def next_document_version(document_id) -> int:
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 AS next_version"
+            " FROM document_versions WHERE document_id = %s",
+            (document_id,),
+        )
+        row = c.fetchone()
+        return int(row["next_version"]) if row else 1
+
+
+def get_document_versions(document_id) -> list[dict]:
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT version, format, note, created_at FROM document_versions"
+            " WHERE document_id = %s ORDER BY version DESC",
+            (document_id,),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def get_document_version(document_id, version) -> dict | None:
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT * FROM document_versions WHERE document_id = %s AND version = %s",
+            (document_id, version),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
 def update_document_index_status(doc_id, index_status, indexed_at=None, indexing_started_at=None, embedding_model=None):
     """Update document index status."""
     current_time = get_current_time_for_db()

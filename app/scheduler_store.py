@@ -21,7 +21,7 @@ def create_item(
     repeat: str = "once",
     at: datetime | None = None,
     time_of_day: time | None = None,
-    weekday: int | None = None,
+    weekdays: list[int] | None = None,
     day_of_month: int | None = None,
     every_minutes: int | None = None,
     timezone_name: str = "UTC",
@@ -32,7 +32,7 @@ def create_item(
         conn.cursor().execute(
             """
             INSERT INTO scheduler_items
-                (id, user_id, kind, title, body, repeat, every_minutes, weekday, day_of_month,
+                (id, user_id, kind, title, body, repeat, every_minutes, weekdays, day_of_month,
                  time_of_day, timezone, next_run_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
@@ -44,7 +44,7 @@ def create_item(
                 body,
                 repeat,
                 every_minutes,
-                weekday,
+                weekdays,
                 day_of_month,
                 time_of_day,
                 timezone_name,
@@ -96,7 +96,7 @@ def due_items(moment: datetime, limit: int = 200, action_lead_minutes: int = 0) 
 
 
 def update_item(item_id: str, **fields: Any) -> dict | None:
-    allowed = {"title", "body", "repeat", "every_minutes", "weekday", "day_of_month",
+    allowed = {"title", "body", "repeat", "every_minutes", "weekdays", "day_of_month",
                "time_of_day", "timezone", "next_run_at", "last_run_at", "enabled"}
     sets, values = [], []
     for key, value in fields.items():

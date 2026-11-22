@@ -1,4 +1,212 @@
-## [v13.5] — 2026-11-18
+## [v13.6] — 2026-11-20
+
+### Changed
+
+- **Only an indexed document offers the graph.** The 🕸️ button was unconditional, so every
+  generated SVG carried it while the graph API itself asks for `index_status = 'indexed'` — the
+  card opened an empty canvas, and the document had no entities at all (`kg_occurrences` 0 for all
+  four drawings). The button now appears for `indexed` and `stale` only; a generated file gains it
+  when the person ticks the index switch. Tests: `tests/test_graph_ui.py`.
+
+- **A malformed tool call is generated again instead of answered without tools.** Measured on a
+  22 KB HTML call: llama-server answered HTTP 500 "Failed to parse tool call arguments", and the
+  fallback dropped the whole catalogue, so the round answered "the model could not form a tool
+  call" instead of the file. The round is now generated again with the tools it needs, and only a
+  second failure falls back to an answer without them. The HTML request also cost a refused
+  `write_document(format="html")` first — `chat.template` and the `svg-graphics` skill now say an
+  HTML page is a ```html block, never a document, because there is no html format to store.
+  Tests: `tests/test_llamacpp_client.py`.
+
+- **A drawing pasted into the answer becomes a document.** Measured: a request for an
+  "svg-document" came back as a 13 000-character ```svg block, which chat renders as code with no
+  way to open it and which never reaches the library. Before the answer is saved, the first fenced
+  svg block is validated by `app/svg_safety.py` and stored through the same writer `write_document`
+  uses; the block is replaced by the sentence that names the file. A drawing that fails validation
+  stays text. The block is also **not streamed**: measured, the model narrated, streamed the whole
+  drawing as text and then called `write_document` anyway, so the user watched the markup for a
+  minute before the file appeared. The stream stops at the fence and says "Creating an SVG document…"
+  while the call finishes. Tests: `tests/test_write_document.py`, `tests/test_svg_answer.py`.
+
+- **A malformed tool call no longer breaks the conversation.** Measured on a 19 KB SVG: the
+  arguments arrived with raw newlines inside the JSON string, the call was rejected — correctly —
+  but the rejected call was also written into the transcript, and llama-server re-parses every
+  tool call in the message history, so every later round failed with the same parse error and the
+  user was told "the model could not form a tool call". Two changes: control characters inside an
+  argument string are accepted (`json.loads(..., strict=False)`, which is the one deviation a
+  drawing needs), and a call that still does not parse enters the transcript with `{}` so the
+  model sees the rejection and can try again. A call that mixed the XML pseudo-call into its JSON
+  values — `name="scene.svg</parameter><parameter=format>svg"`, which once produced a document
+  named `parameter>svg.md` — is refused as `argument_markup` instead of being written, and an
+  absent format follows an `.svg` name. Tests: `tests/test_tool_argument_repair.py`,
+  `tests/test_write_document.py`.
+
+- **A renamed document is reported as renamed.** The server never overwrites a name: an existing
+  one becomes "name (2)". Measured, the model then told the user the name it had asked for while
+  the tool result carried the real one, so the result now says why the name changed and
+  `chat.template` requires the exact name from a tool result. The document stages gained their
+  emoji (📄, 🎨, ✏️, ↩️), and a stage id the page does not know no longer replaces the label it is
+  already showing with "⚙️ Working…" — measured, renaming a stage turned a correct label into the
+  generic one in every tab opened before the restart. Tests: `tests/test_write_document.py`,
+  `tests/test_tool_stages.py`.
+
+- **The READMEs describe the product again.** They had no scheduler, no network diagnostics, no
+  assistant-written files, no document sharing and no panel-installed skills, and the TL;DR still
+  said eleven router categories while the prompt had fourteen. Both languages now cover them, the
+  router table gained `[-NET-]`, `[-SCHEDULE-]` and `[-WRITE-]`, the documentation table links
+  SCHEDULER, NET_TOOLS, SKILLS and GRAPH, and the profile table carries the measured netdiag
+  footprint (~11 MiB) instead of presenting optional profiles as part of the core.
+  `check_readme_features.py` keeps it that way: every `docs/` page linked, every router marker in
+  both files, the category count matched to the router, and 27 capability phrases checked per
+  language.
+
+- **The assistant's description of itself caught up with the product.** `prompts/{en,ru}/skills.txt`
+  — the list injected as `{skills_section}`, which the model answers "what can you do?" from —
+  named ten things and omitted page reading, crawling, network diagnostics, reminders, file
+  writing and rollback, deep analysis, background tasks, long-term memory and skills. All of them
+  worked; none were mentioned, so the assistant could not offer them. Both languages now carry 18
+  capabilities, and `check_skills_coverage.py` derives the inventory from `_EXECUTOR_MAP` (23
+  tools) and `TOOL_SPECS` (16 task capabilities), failing when a tool or capability has no line,
+  when a phrase disappears from either language, or when the two lists differ in length.
+
+- **The type check runs and blocks CI.** `mypy app/ modules/` was advisory (`|| true`) and, as
+  configured, did not run at all: `python_version = "3.11"` met numpy 2.5's stub, written with
+  PEP 695 syntax, and mypy aborted before reaching `app/`. It now targets 3.12 — the runtime is
+  still 3.11, and `python -m compileall` in the same CI job guards that the code parses there —
+  and the `|| true` is gone. The backlog is bounded rather than hidden: the 38 modules that still
+  carry errors are listed with `ignore_errors` in `pyproject.toml`, and
+  `check_mypy_ratchet.py` fails an entry that no longer reports anything, so the list can only
+  shrink. Three findings were real defects and are fixed: `update_task`/`update_step` are
+  annotated `dict | None`, which is what they already returned; a bytes `stderr` slice is
+  decoded before it reaches a log line; and `CamModule.camera_api_url` starts as an empty string
+  instead of `None`, so `.rstrip()` cannot raise before `init_app()`.
+
+### Added
+
+- **The assistant can write a song.** ACE-Step 1.5 (MIT on code and weights) runs as its own
+  container under the `with-music` profile; a chat request with lyrics is queued as one GPU task,
+  rendered and returned as an audio message, and the file is kept under `uploads/music/<login>/`.
+  Measured on the reference 16 GB card: a 30 s Russian song takes 12–15 s and peaks at 7.0 GB,
+  the first song after a container start takes ~170 s. Two rules come from measurement: lyrics
+  need `[verse]`/`[chorus]` structure (without it the same words produced no intelligible vocal,
+  0.00 word recall against 0.78–0.83 with it), and the duration must fit the lyric length — six
+  lines at 60 s made the planner emit an instrumental. The client adds the tags and refuses a
+  duration outside 10–600 s instead of clamping. On CPU hosts the same model runs only with
+  `MUSIC_ALLOW_CPU=1`: measured 74–77 s to load, ~90 s for a 10 s song and 15 GB of RAM, so a
+  30 s song is 4–5 minutes. The XL 4B tier does not fit a 16 GB card (CUDA OOM at a 15.8 GB
+  peak) and needs 24 GB. The web container now carries `ulimits: nofile: 65536`: its worker
+  exhausted the image's soft limit of 1024 after about 14 hours, after which every health check
+  failed with `Errno 24`. Details → [MUSIC.md](docs/MUSIC.md).
+
+- **A document request says what it is doing.** The chat status stopped at "Thinking…" while the
+  model composed a `write_document` call: in the measured case an SVG cost 25 s of argument
+  generation, and the tool itself then ran for 0.6 s, so a stage announced at execution time would
+  have covered nothing. The stream now reports the tool as soon as its **name** arrives in the
+  first delta — "Writing the document…" — and switches to "Creating an SVG document…" once the format
+  is known; `edit_document` and `restore_document_version` announce themselves the same way.
+  Tests: `tests/test_tool_stages.py`.
+
+- **Skill selection is measured, and it depends on the model.** The evaluation harness now scores
+  skills — `EvalCase.expected_skills`, `skill_exact`, `false_skills` and `missed_skills` — and the
+  seed set grew to 47 cases with five positive cases and five traps. Measured with
+  `flask kernel-eval --mode kernel`: in universal mode (Qwen3.6-35B-A3B Q2) the kernel never fills
+  the `skills` field — 0.894 exact, 0 false, 5 missed — and four prompt variants (the discouraging
+  "often the empty array" line removed, the section moved above the tool catalogue, an imperative
+  with examples added) changed nothing, while the container log contains no skill activation at
+  all. In the pair, with Qwen3VL-8B as the kernel, three of the five fire — every Russian positive,
+  both English ones missed — at 0.957 exact and 0 false; the same run scores intent 0.957 and tool
+  selection 0.400, against 1.000 and 1.000 on the universal model, so the mode choice trades routing
+  precision for skill activation. The kernel now applies the same availability filter as the chat
+  prompt: a skill whose tools are absent is neither listed nor nameable, which previously let it
+  route into a loop carrying instructions for tools that were not offered.
+
+- **The assistant can draw SVG.** `write_document` gained an `svg` format: a diagram,
+  chart or icon is stored as a document of the user, previewed as an image and never
+  indexed — a drawing's markup is not a text corpus. The writer validates the document
+  before storing it (scripts, `on*` handlers, external `href`/`url()`, `foreignObject`,
+  a doctype and SMIL animation are refused; only local `#id` references pass), the
+  preview carries a sandbox CSP, and the card has no index switch. An SVG is edited
+  rather than appended. The bundled `svg-graphics` skill teaches layouts, charts, icons
+  and CSS-only animation. Tests: `tests/test_svg_safety.py`,
+  `tests/test_write_document_svg.py`.
+
+- **Two built-in skills: network diagnostics and documents.** `net-diagnostics` carries the
+  order of checks (DNS first, then ping, trace, ports, HTTP, whois, and speed only when asked),
+  what counts as proof and what does not, the one-host-per-call rule, and the refusal path.
+  `documents` carries when an answer should become a file, which format fits, that a generated
+  document can be edited and rolled back while an upload is only ever rebuilt under a new name,
+  and that indexing a generated file is a manual switch. A skill is now offered only while its
+  tools exist: `catalog(available=…)` drops a skill whose every `allowed-tools` name is missing
+  from the live catalogue, so `net-diagnostics` disappears when the sidecar is off; a skill
+  with no tools is never hidden. Per-user permission deliberately does not hide it — the tools
+  stay advertised and `execute_tool` refuses with a sentence, as for the camera. Tests:
+  `tests/test_skills_availability.py`.
+
+- **The assistant can change what it wrote.** `edit_document` replaces the body of a generated
+  document and `restore_document_version` brings an earlier state back. An upload is refused
+  rather than edited: its bytes may be shared with everyone the document is shared with, so a
+  request to fix one is answered by writing a new document built from it, under a different
+  name. The format is fixed by the existing document — an edit cannot turn `.md` into `.docx` —
+  and a container is re-rendered from the body stored in `document_versions`, which is also the
+  only way a PDF can come back: a PDF is a drawing, not text, so it is never patched byte by
+  byte. History is append-only (a restore is itself a new version, so undoing one is another
+  restore), the last 10 states are kept and are not charged to the quota, and an edit marks an
+  indexed document `stale` so search cannot serve the old body. Tests:
+  `tests/test_documents_edit.py`.
+
+- **An action is queued by what it actually costs.** The lead was a constant, so a check that
+  takes four minutes was queued a minute ahead and delivered late by design, while a two-second
+  probe held the queue early for no reason. `action_lead_minutes()` now takes the **median of the
+  item's last five completed runs plus 30 s**, bounded by `SCHEDULER_LEAD_MAX_MIN` (10) and, for
+  a frequent action, by half its interval; `SCHEDULER_ACTION_LEAD_MIN` stays the floor and the
+  answer until there is history. The tick fetches with the ceiling as its window and judges each
+  item by its own lead, so a long-running item is not missed. Three settings in Admin → Settings
+  → Scheduler: `SCHEDULER_ADAPTIVE_LEAD`, `SCHEDULER_LEAD_MARGIN_S`, `SCHEDULER_LEAD_MAX_MIN`.
+  The margin is a starting point, not a measurement on the reference card. Tests:
+  `tests/test_scheduler_lead.py`.
+
+- **A weekly schedule can name several days.** "Every Tuesday and Thursday at 19:45" used to
+  become a single Thursday item: a weekly row held one `weekday`, and the server took the
+  weekday of the moment the model handed over — today's, since only a time was named. The
+  answer then told the person the system could not choose weekdays at all, which was wrong in
+  both directions. `scheduler_items` now stores `weekdays SMALLINT[]` (Python numbering; the
+  tools take ISO 1–7), `next_after()` fires on the soonest day of the set, and one item covers
+  the whole agreement, so editing or deleting it cannot leave a second copy behind. Two
+  weekdays with any other repeat, or a set that cannot be read, are refused with `⚠️` instead
+  of being silently ignored. The old `weekday` column is folded into the array and dropped on
+  the first start after the upgrade. Tests: `tests/test_scheduler_recurrence.py`,
+  `tests/test_scheduler_tools.py`.
+
+### Fixed
+
+- **The test suite no longer leaks a Tasks executor thread per app.** `create_app()` starts the
+  executor, and the fixture stopped the module singleton at teardown — which is not that app's
+  instance once a test resets it or a later app replaces it. The orphaned thread kept polling the
+  shared test database for the rest of the file and froze or interrupted tasks of later tests:
+  measured, a full run of `tests/test_tasks_executor.py` failed 2, then 5, then 4 of 190 tests
+  with different names, while every one of them passed alone. The fixture now holds the instance
+  it started and stops that one; two consecutive full runs are green (190 passed each).
+  Tests: `tests/conftest.py`, `tests/test_tasks_executor.py`.
+
+### Migration
+
+- **`scheduler_items.weekday` is dropped on the first start after the upgrade.** The column held
+  one weekday for a weekly item and `weekdays SMALLINT[]` replaces it. `init_db()` adds the array,
+  copies the old value into it for every weekly row that has none, and only then drops the column,
+  so no stored schedule is lost — but the drop is permanent and runs on every installation the
+  moment the new version boots. Take the usual backup first, and count what is affected on a copy
+  of the real schema:
+
+  ```
+  SELECT count(*) FROM scheduler_items WHERE repeat = 'weekly' AND weekday IS NOT NULL;
+  ```
+
+  Checked on the installation this release was prepared on: the one weekly item still fires on its
+  day (`weekdays = {3}`), and the drop has run on every start since without error.
+
+  The change exists because two columns held the same agreement and an edit could leave the second
+  copy behind.
+
+## [v13.5] — 2026-11-19
 
 ### Changed
 

@@ -1,4 +1,4 @@
-# Skills — FLAI v13.5
+# Skills — FLAI v13.6
 
 A skill is a folder of instructions the model can load **on demand**. The catalogue
 line — name and one description — sits in every system prompt; the body is read only
@@ -12,9 +12,18 @@ them works here, and one written here works there.
 
 ```
 skills/
-└── web-research/
-    ├── SKILL.md        # English, required
-    └── SKILL.ru.md     # Russian, optional
+├── web-research/
+│   ├── SKILL.md        # English, required
+│   └── SKILL.ru.md     # Russian, optional
+├── net-diagnostics/
+│   ├── SKILL.md
+│   └── SKILL.ru.md
+├── documents/
+│   ├── SKILL.md
+│   └── SKILL.ru.md
+└── svg-graphics/
+    ├── SKILL.md
+    └── SKILL.ru.md
 ```
 
 ```markdown
@@ -81,8 +90,29 @@ dropped rather than waited out.
 4. **Fallback** — a skill the model calls directly through `activate_skill` returns its
    body as a tool result. That tool is advertised only while at least one skill exists.
 
+Step 2 is model-dependent, and that is measured rather than assumed. On the 47-case seed set
+(`flask kernel-eval --mode kernel`) the universal Qwen3.6-35B-A3B (Q2) never fills the `skills`
+field — four prompt variants changed nothing — while Qwen3VL-8B, the multimodal half of the pair,
+names the right skill in every Russian positive case and misses both English ones. The field is
+therefore an opportunity, not a guarantee: steps 1 and 4 are what still work when a model ignores
+it. The same runs put the trade in numbers: 0.957 intent and 0.400 tool selection for the 8B
+against 1.000 and 1.000 for the universal model, so the mode that activates skills is also the mode
+that selects tools less accurately.
+
 A skill never overrides a pipeline intent: crawl, document search, history, memory and
 media actions are decided before any skill is considered.
+
+## When a skill is offered
+
+A skill is offered only while its tools exist. If **every** name in `allowed-tools` is missing
+from the live tool catalogue, the skill is left out of the catalogue the prompt receives —
+network diagnostics without its sidecar, a site-reading skill without the crawler. A skill that
+names no tools is always offered: what it needs is decided by its instructions.
+
+Per-user permissions are deliberately not part of this filter. The network tools are advertised
+to everyone who can chat, a call from an account without the permission is refused with a
+sentence, and the skill's own first rule is to say that once and stop. Hiding by permission
+would give one idea two implementations — the camera and MCP paths already work this way.
 
 ## What the tool marks mean
 

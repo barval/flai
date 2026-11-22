@@ -33,11 +33,12 @@ class EvalCase:
     lang: str
     expected_intent: str
     expected_tools: tuple[str, ...] = ()
+    expected_skills: tuple[str, ...] = ()
     note: str = ""
 
 
 def load_dataset(path: Path) -> list[EvalCase]:
-    """Read a JSONL dataset of ``{message, lang, expected_intent, expected_tools, note}``."""
+    """Read a JSONL dataset of ``{message, lang, expected_intent, expected_tools, expected_skills, note}``."""
     cases: list[EvalCase] = []
     with Path(path).open(encoding="utf-8") as handle:
         for line in handle:
@@ -51,18 +52,28 @@ def load_dataset(path: Path) -> list[EvalCase]:
                     lang=record.get("lang", "ru"),
                     expected_intent=record["expected_intent"],
                     expected_tools=tuple(record.get("expected_tools") or ()),
+                    expected_skills=tuple(record.get("expected_skills") or ()),
                     note=record.get("note", ""),
                 )
             )
     return cases
 
 
-def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase]) -> dict[str, Any]:
+def score(
+    predictions: list[tuple[str, tuple[str, ...], tuple[str, ...]]],
+    cases: list[EvalCase],
+) -> dict[str, Any]:
     """Compare predictions against labels.
 
     ``false_tools`` counts tools that were selected but were not expected — the
     error that matters most, because a wrongly advertised tool is what makes a
     small model call something it should not.
+
+    Skills are scored on the decision that reaches the queue, where a pipeline
+    intent (rag, crawl, image, remember) clears them: a name that never loads a
+    body costs nothing, so counting it as a false activation would overstate the
+    error. ``false_skills`` and ``missed_skills`` count individual names, so a
+    request that flips two names is two errors rather than one.
     """
     total = len(cases)
     if total == 0:
@@ -73,6 +84,9 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
             "tool_exact": 0.0,
             "false_tools": 0,
             "tools_outside_chat": 0,
+            "skill_exact": 0.0,
+            "false_skills": 0,
+            "missed_skills": 0,
             "confusions": {},
             "by_lang": {},
         }
@@ -82,12 +96,15 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
     tool_hits = 0
     false_tools = 0
     tools_outside_chat = 0
+    skill_hits = 0
+    false_skills = 0
+    missed_skills = 0
     confusions: dict[tuple[str, str], int] = {}
     by_lang: dict[str, dict[str, Any]] = {}
 
     if len(predictions) != total:
         raise ValueError(f"expected {total} predictions, got {len(predictions)}")
-    for (intent, tools), case in zip(predictions, cases, strict=True):
+    for (intent, tools, skills), case in zip(predictions, cases, strict=True):
         expected = set(case.expected_tools)
         if intent == case.expected_intent:
             intent_hits += 1
@@ -104,9 +121,19 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
             # has its own tools, so a selection here is a misclassification hint.
             tools_outside_chat += len(tools)
 
-        bucket = by_lang.setdefault(case.lang, {"cases": 0, "intent_hits": 0, "tool_hits": 0, "tool_cases": 0})
+        expected_skills = set(case.expected_skills)
+        chosen_skills = set(skills)
+        skill_hits += int(chosen_skills == expected_skills)
+        false_skills += len(chosen_skills - expected_skills)
+        missed_skills += len(expected_skills - chosen_skills)
+
+        bucket = by_lang.setdefault(
+            case.lang,
+            {"cases": 0, "intent_hits": 0, "tool_hits": 0, "tool_cases": 0, "skill_hits": 0},
+        )
         bucket["cases"] += 1
         bucket["intent_hits"] += int(intent == case.expected_intent)
+        bucket["skill_hits"] += int(chosen_skills == expected_skills)
         if case.expected_intent in TOOL_SCORING_INTENTS:
             bucket["tool_cases"] += 1
             bucket["tool_hits"] += int(set(tools) == expected)
@@ -118,6 +145,9 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
         "tool_exact": round(tool_hits / tool_cases, 4) if tool_cases else 0.0,
         "false_tools": false_tools,
         "tools_outside_chat": tools_outside_chat,
+        "skill_exact": round(skill_hits / total, 4),
+        "false_skills": false_skills,
+        "missed_skills": missed_skills,
         "confusions": confusions,
         "by_lang": {
             lang: {
@@ -126,13 +156,16 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
                 "tool_exact": round(bucket["tool_hits"] / bucket["tool_cases"], 4)
                 if bucket["tool_cases"]
                 else 0.0,
+                "skill_exact": round(bucket["skill_hits"] / bucket["cases"], 4),
             }
             for lang, bucket in by_lang.items()
         },
     }
 
 
-def run_evaluation(app: Any, cases: list[EvalCase], mode: str) -> list[tuple[str, tuple[str, ...]]]:
+def run_evaluation(
+    app: Any, cases: list[EvalCase], mode: str
+) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
     """Run the dataset through the marker router (``router``) or the kernel (``kernel``).
 
     Both modes go through ``BaseModule.process_message`` so the comparison is
@@ -141,12 +174,18 @@ def run_evaluation(app: Any, cases: list[EvalCase], mode: str) -> list[tuple[str
     base = app.modules["base"]
     previous = base.KERNEL_ENABLED
     base.KERNEL_ENABLED = mode == "kernel"
-    predictions: list[tuple[str, tuple[str, ...]]] = []
+    predictions: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
     try:
         with app.app_context():
             for case in cases:
                 result = base.process_message(case.message, DEFAULT_TIME, lang=case.lang, recent_context="")
-                predictions.append((result.get("action", "none"), tuple(result.get("tools") or ())))
+                predictions.append(
+                    (
+                        result.get("action", "none"),
+                        tuple(result.get("tools") or ()),
+                        tuple(result.get("skills") or ()),
+                    )
+                )
     finally:
         base.KERNEL_ENABLED = previous
     return predictions

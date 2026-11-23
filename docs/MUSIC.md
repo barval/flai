@@ -46,6 +46,9 @@ The music module is a full GPU task: the queue unloads llama.cpp before it and t
 container is restarted afterwards, because its CUDA context is not released by the model
 itself. That is the same rule the video pipeline follows.
 
+Instrumental music is the same tool called with empty lyrics: the sidecar treats an
+empty lyric as an instrumental piece, and the default 30 s applies.
+
 ## What the model needs from the text
 
 Two rules come from measurement, not from taste:

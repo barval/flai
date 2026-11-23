@@ -185,9 +185,8 @@ class MusicModule:
         if duration < 10 or duration > self.max_duration_s:
             raise MusicError("duration", f"{duration} outside 10..{self.max_duration_s}")
 
+        # Empty lyrics is the sidecar's instrumental mode (is_instrumental()).
         structured = normalize_lyrics(lyrics)
-        if not structured:
-            raise MusicError("lyrics", "empty lyrics")
 
         if not self.is_available(force=True):
             raise MusicError("unavailable", self.base_url)

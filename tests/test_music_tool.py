@@ -57,11 +57,13 @@ def test_the_message_quotes_the_person_not_the_style_prompt():
     assert request_data["prompt"] == "night city rain, female vocal"
 
 
-def test_missing_lyrics_is_refused():
+def test_no_lyrics_means_instrumental():
     app = _App()
-    answer = _exec_generate_music(_ctx(app), prompt="pop", lyrics="   ")
-    assert answer.startswith("⚠️")
-    assert not app.request_queue.calls
+    answer = _exec_generate_music(_ctx(app), prompt="calm autumn rain", lyrics="")
+    assert "⚠️" not in answer
+    request_data = app.request_queue.calls[0][0][2]
+    assert request_data["lyrics"] == ""
+    assert request_data["duration"] == 30
 
 
 def test_duration_outside_the_range_is_refused():

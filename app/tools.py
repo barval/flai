@@ -174,10 +174,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "generate_music",
             "description": (
-                "Create a sung song from lyrics. Use when the person asks for a song, a track, "
-                "or to sing given words. The lyrics must be the words to sing; add structure "
-                "tags [verse]/[chorus] when you write them. Duration fits the lyric length: "
-                "about 6 seconds per line."
+                "Create a song, or instrumental music when no lyrics are given. Use when the "
+                "person asks for a song, a track, background music or to sing given words. "
+                "The lyrics are the words to sing; add structure tags [verse]/[chorus] when you "
+                "write them. Leave lyrics empty for instrumental music. Duration fits the lyric "
+                "length: about 6 seconds per line, 30 s when there is no lyric."
             ),
             "parameters": {
                 "type": "object",
@@ -195,7 +196,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "description": "Song length in seconds, 10-600. Match it to the lyrics: about 6 s per line.",
                     },
                 },
-                "required": ["prompt", "lyrics"],
+                "required": ["prompt"],
             },
         },
     },
@@ -1697,10 +1698,8 @@ def _exec_generate_music(ctx: dict[str, Any], **kw: Any) -> str:
             return "⚠️ " + str(_("Music generation module unavailable"))
 
     prompt = str(kw.get("prompt") or "").strip() or "pop song"
+    # No lyrics is a request for instrumental music, which the sidecar supports.
     lyrics = str(kw.get("lyrics") or "").strip()
-    if not lyrics:
-        with force_locale(language):
-            return "⚠️ " + str(_("Music needs the lyrics to sing"))
     try:
         duration = int(kw.get("duration_s") or 0)
     except (TypeError, ValueError):

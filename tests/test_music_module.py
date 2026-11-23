@@ -46,10 +46,8 @@ def test_normalize_lyrics_keeps_existing_tags():
     assert normalize_lyrics(text) == text
 
 
-def test_empty_lyrics_are_refused():
-    with pytest.raises(MusicError) as err:
-        MusicModule().generate("pop", "   ", duration_s=30)
-    assert err.value.code == "lyrics"
+def test_empty_lyrics_become_an_instrumental():
+    assert normalize_lyrics("   ") == ""
 
 
 def test_duration_above_the_cap_is_refused_not_clamped(monkeypatch):

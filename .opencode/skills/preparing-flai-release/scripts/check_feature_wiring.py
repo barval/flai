@@ -53,6 +53,8 @@ FEATURES: dict[str, list[tuple[str, str]]] = {
         ("README-ru.md", "with-music"),
         ("README-ru.md", "--with-music"),
         ("README-ru.md", "--profile with-music"),
+        ("README.md", "**Music and songs**"),
+        ("README-ru.md", "**Музыка и песни**"),
         # its own documentation, both languages
         ("docs/MUSIC.md", "with-music"),
         ("docs/MUSIC-ru.md", "with-music"),

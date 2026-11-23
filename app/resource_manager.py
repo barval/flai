@@ -911,7 +911,10 @@ class ResourceManager:
                 logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
                 # The music sidecar has no unload endpoint and holds ~5.5 GB; a
                 # chat model needing 14.2 GB cannot fit beside it (measured).
-                self.restart_music_container()
+                # Only when music is configured: an installation without it must
+                # not pay a docker call inside the VRAM wait.
+                if setting("MUSIC_URL", ""):
+                    self.restart_music_container()
                 self.unload_llamacpp_model(llamacpp_url)
 
             # 2. Unload video pipeline

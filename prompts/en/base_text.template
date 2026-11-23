@@ -70,6 +70,7 @@ Otherwise, the query after the marker should be a concise search topic (e.g. "la
 Only: code/text writing, HTML pages, apps, scripts, complex reasoning.
 INCLUDES requests to write code/HTML/script that draws, animates, or displays anything — that is CODE, not media generation. Example: "write a single html file that draws an animated butterfly flying across the screen" → category 8.
 DO NOT include: simple calculations (category 1), search (categories 5-6), conversions at a current rate (category 6).
+NOT reasoning: a request to compose or generate music, a song, a track, a melody or background — that is ordinary chat WITHOUT a marker, the generate_music tool renders the audio file; prose in the answer does not replace a song.
 If the complex query needs fresh internet data — that is category 10.
 
 ## 9. REMEMBER — [-REMEMBER-] and query

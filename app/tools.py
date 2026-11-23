@@ -177,8 +177,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "Create a song, or instrumental music when no lyrics are given. Use when the "
                 "person asks for a song, a track, background music or to sing given words. "
                 "The lyrics are the words to sing; add structure tags [verse]/[chorus] when you "
-                "write them. Leave lyrics empty for instrumental music. Duration fits the lyric "
-                "length: about 6 seconds per line, 30 s when there is no lyric."
+                "write them. Leave lyrics empty when the person asks for music, a melody, a track or background "
+                "and did not give words — do not invent them. Duration fits the lyric length: "
+                "about 6 seconds per line, 30 s when there is no lyric."
             ),
             "parameters": {
                 "type": "object",

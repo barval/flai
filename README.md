@@ -279,6 +279,7 @@ Every message is classified by the router model into one of these categories. Th
 | `[-NET-]` | **Network diagnostics** | One typed `net_*` tool through the sidecar (dig, whois, ping, mtr, nmap, iperf3) — no shell | Tool result + SLM + history |
 | `[-SCHEDULE-]` | **Reminder or scheduled action** | Ordinary chat with `schedule_reminder` / `schedule_action` | The tool's confirmation naming the stored moment |
 | `[-WRITE-]` | **Create a document** | Ordinary chat with `write_document` | The tool's confirmation naming the file |
+| `[-MUSIC-]` | **Song or instrumental music** | Ordinary chat with `generate_music` (lyrics are optional: empty means instrumental) | Audio message with the player, the lyrics and the file |
 | `none` | **Chat with tools** | Multimodal model + native tool calling | Tool results + SLM + history |
 
 **How it behaves in practice:**

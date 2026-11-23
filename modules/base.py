@@ -1135,12 +1135,13 @@ class BaseModule(TranslationMixin):
             "[-VIDEO-]": "video",
             "[-REMEMBER-]": "remember",
             "[-HISTORY-]": "history",
+            "[-MUSIC-]": "music",
         }
 
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
-                if action in ("net", "schedule", "write"):
+                if action in ("net", "schedule", "write", "music"):
                     # Both are ordinary chat with tools. The whole request has to survive:
                     # the chat model chooses the tool from the user's words, and "prits.ru"
                     # alone says nothing about measuring anything, nor "at nine" about what

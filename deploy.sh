@@ -847,15 +847,20 @@ resolve_stack() {
 
     if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
         local ram_gb disk_gb
-        ram_gb=$(awk '/MemTotal/{printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo "?")
+        ram_gb=$(awk '/MemTotal/{printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo "0")
         disk_gb=$(df -Pk /home 2>/dev/null | awk 'NR==2{printf "%.0f", $4/1048576}')
-        error "Music on a CPU host takes 4–5 minutes per 30-second song and ~15 GB of RAM."
-        error "It also needs ~23 GB of disk: an 11.8 GB image and 11 GB of weights."
-        error "This host: ${ram_gb} GB of RAM, ${disk_gb} GB free on /home."
-        error "The main model takes ~11 GB more on CPU, so music is opt-in:"
-        error "  MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
-        error "Below 25 GB of free disk, free space first — the image and the weights will not fit."
-        exit 1
+        if [[ "${ram_gb:-0}" -ge 30 && "${disk_gb:-0}" -ge 25 ]]; then
+            warn "Music on CPU: ${ram_gb} GB of RAM and ${disk_gb} GB free disk are enough — enabling without the flag."
+            warn "A song takes ~15 GB of RAM: do not run video and music at the same time."
+        else
+            error "Music on a CPU host takes 4–5 minutes per 30-second song and ~15 GB of RAM."
+            error "It also needs ~23 GB of disk: an 11.8 GB image and 11 GB of weights."
+            error "This host: ${ram_gb} GB of RAM, ${disk_gb} GB free on /home."
+            error "The main model takes ~11 GB more on CPU, so music is opt-in:"
+            error "  MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music"
+            error "The automatic threshold is 30 GB of RAM and 25 GB of free disk."
+            exit 1
+        fi
     fi
 }
 

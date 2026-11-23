@@ -77,13 +77,14 @@ The model runs on CPU, as upstream documents, but it is heavy and slow — measu
 | 30 s song (extrapolated) | 4–5 min |
 | Container RAM | 15 GB |
 
-That competes with the main model on a 16 GB host, so CPU is **opt-in**:
+That competes with the main model, so the deploy script measures the host: with **30 GiB of RAM
+or more and 25 GB of free disk** it enables music and warns that video and music must not run
+together. Below either threshold the request is refused with the numbers above unless it is
+explicit:
 
 ```bash
 MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music
-```
-
-Without the variable the deploy script refuses with the numbers above. The CPU stack
+``` The CPU stack
 builds `flai-music:cpu` from `services/music/Dockerfile.cpu` (CPU torch wheel, no CUDA),
 and the compose file has no GPU reservation.
 

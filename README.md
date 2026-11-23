@@ -86,8 +86,8 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
   as an audio message with a player. ACE-Step 1.5 (MIT) runs in its own container under the
   `with-music` profile: a 30 s Russian song takes 12–15 s on a 16 GB card and peaks at 7 GB.
   Lyrics get `[verse]`/`[chorus]` automatically — measured, without that structure the same words
-  came back unintelligible. On a CPU host it is opt-in (`MUSIC_ALLOW_CPU=1`) and takes 4–5
-  minutes per song. Songs arrive as mp3 with the lyrics under the player, and the format is
+  came back unintelligible. On a CPU host it takes 4–5 minutes per song and ~15 GB of RAM; the deploy script warns when the
+  host is close to that limit. Songs arrive as mp3 with the lyrics under the player, and the format is
   a panel setting. → [MUSIC.md](docs/MUSIC.md)
 
 - **The assistant can change what it wrote — and draw.** A document it created can be edited in
@@ -144,7 +144,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
 - **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion; **recommended from 24 GB VRAM**), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
-- **Music and songs** — ACE-Step 1.5 (MIT) in its own `with-music` container: ask for a song and it writes the lyrics, or hand it your own text; ask for music without words and it renders an instrumental piece. Songs arrive as mp3 with the lyrics under the player, the format and every model parameter are panel settings, and the GPU queue evicts the chat model for the duration. On a CPU host it is opt-in (`MUSIC_ALLOW_CPU=1`). → [MUSIC.md](docs/MUSIC.md)
+- **Music and songs** — ACE-Step 1.5 (MIT) in its own `with-music` container: ask for a song and it writes the lyrics, or hand it your own text; ask for music without words and it renders an instrumental piece. Songs arrive as mp3 with the lyrics under the player, the format and every model parameter are panel settings, and the GPU queue evicts the chat model for the duration. On a CPU host the same `--with-music` flag runs it, with a warning when RAM or disk is tight. → [MUSIC.md](docs/MUSIC.md)
 
 ### 🧩 Background tasks
 - **Agentic tasks** — a request is planned as steps and executed with checkpoints: web search, document and history search, camera snapshots, image analysis, site study, deep analysis, image/video generation. The planner records its plan as a `write_plan` tool call, a `research` step can search, open pages and refine its own query before answering, and chat always preempts a task. → [TASKS.md](docs/TASKS.md)
@@ -382,7 +382,7 @@ measured ~98 s for a single 256×192 second and needs more than 12 GB of RAM at 
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
 | Video — LTX (up to 10 s) | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
 | Video — Wan (5 s) | ⚠️ 512×288×121, encoder offloaded | ✅ 832×480×121, encoder offloaded | ✅ 832×480×121 (209 s) | ❌ refused (needs a GPU) |
-| Music — songs from lyrics | ⚠️ 2B turbo fits, but the chat model must be evicted | ✅ 2B turbo (6.9 GB peak) | ✅ 2B turbo (12–15 s per 30 s song) | ⚠️ opt-in `MUSIC_ALLOW_CPU=1`, ~4 min per song and 15 GB RAM |
+| Music — songs from lyrics | ⚠️ 2B turbo fits, but the chat model must be evicted | ✅ 2B turbo (6.9 GB peak) | ✅ 2B turbo (12–15 s per 30 s song) | ⚠️ CPU path: ~4 min per song and 15 GB RAM |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -464,7 +464,7 @@ cd flai
 ```
 
 No NVIDIA GPU? Add `--cpu`; `docker-compose.cpu.yml` is then selected automatically. Music on CPU is
-opt-in and slow — `MUSIC_ALLOW_CPU=1 ./deploy.sh --cpu --with-music` (4–5 minutes per song, 15 GB of RAM). Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
+slow — 4–5 minutes per song and 15 GB of RAM; the script warns when the host is close to that limit. Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
 
 ### Updating an installation
 

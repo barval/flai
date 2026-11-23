@@ -91,7 +91,7 @@
   0.00 word recall against 0.78–0.83 with it), and the duration must fit the lyric length — six
   lines at 60 s made the planner emit an instrumental. The client adds the tags and refuses a
   duration outside 10–600 s instead of clamping. On CPU hosts the same model runs only with
-  `MUSIC_ALLOW_CPU=1`: measured 74–77 s to load, ~90 s for a 10 s song and 15 GB of RAM, so a
+  `--with-music` on a CPU host: measured 74–77 s to load, ~90 s for a 10 s song and 15 GB of RAM, so a
   30 s song is 4–5 minutes. The XL 4B tier does not fit a 16 GB card (CUDA OOM at a 15.8 GB
   peak) and needs 24 GB. The web container now carries `ulimits: nofile: 65536`: its worker
   exhausted the image's soft limit of 1024 after about 14 hours, after which every health check

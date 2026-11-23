@@ -21,7 +21,7 @@ speaks its REST API.
 | Disk | image 20.8 GB on disk + weights 11 GB | image 11.8 GB on disk + weights 11 GB |
 | Image | `flai-music:cuda` (`services/music/Dockerfile`) | `flai-music:cpu` (`Dockerfile.cpu`, CPU torch wheel) |
 | Speed, 30 s song | 12–15 s | 4–5 min (~8x real time) |
-| Enable | `./deploy.sh --with-music` | `MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music` |
+| Enable | `./deploy.sh --with-music` | `./deploy.sh --cpu --with-music` (the script warns when the host is tight) |
 
 AMD and Intel hosts have no CUDA image: they run the CPU stack, where music is the opt-in
 CPU path described below. That combination is not measured.
@@ -77,14 +77,9 @@ The model runs on CPU, as upstream documents, but it is heavy and slow — measu
 | 30 s song (extrapolated) | 4–5 min |
 | Container RAM | 15 GB |
 
-That competes with the main model, so the deploy script measures the host: with **30 GiB of RAM
-or more and 25 GB of free disk** it enables music and warns that video and music must not run
-together. Below either threshold the request is refused with the numbers above unless it is
-explicit:
-
-```bash
-MUSIC_ALLOW_CPU=1 ./deploy.sh --with-music
-``` The CPU stack
+`--with-music` always starts it. The deploy script measures the host and warns when RAM is below
+30 GiB or free disk below 25 GB, because a song takes ~15 GB of RAM next to the main model and the
+image plus weights need ~23 GB of disk. It also warns that video and music must not run together. The CPU stack
 builds `flai-music:cpu` from `services/music/Dockerfile.cpu` (CPU torch wheel, no CUDA),
 and the compose file has no GPU reservation.
 

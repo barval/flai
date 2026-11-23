@@ -828,22 +828,18 @@ resolve_stack() {
         exit 1
     fi
 
-    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml && "${MUSIC_ALLOW_CPU:-0}" != "1" ]]; then
+    if [[ "$WITH_MUSIC" == "true" && "$COMPOSE_FILE" == *cpu.yml ]]; then
         local ram_gb disk_gb
         ram_gb=$(awk '/MemTotal/{printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo "0")
         disk_gb=$(df -Pk /home 2>/dev/null | awk 'NR==2{printf "%.0f", $4/1048576}')
-        if [[ "${ram_gb:-0}" -ge 30 && "${disk_gb:-0}" -ge 25 ]]; then
-            warn "Музыка на CPU: RAM ${ram_gb} ГБ и ${disk_gb} ГБ свободного диска хватает — включаю без флага."
-            warn "На время песни она займёт ~15 ГБ RAM: не запускайте видео и музыку одновременно."
+        if [[ "${ram_gb:-0}" -lt 30 || "${disk_gb:-0}" -lt 25 ]]; then
+            warn "Музыка на CPU: RAM ${ram_gb} ГБ, свободно ${disk_gb} ГБ — ниже рекомендуемых 30 ГиБ и 25 ГБ."
+            warn "Песня занимает ~15 ГБ RAM и идёт 4–5 минут: возможны swap и очень долгие ответы."
+            warn "Образ 11,8 ГБ и веса 11 ГБ могут не поместиться на диск."
         else
-            error "Музыка на CPU-хосте идёт 4–5 минут на 30-секундную песню и занимает ~15 ГБ RAM."
-            error "Нужно также ~23 ГБ диска: образ 11,8 ГБ и веса 11 ГБ."
-            error "Сейчас: RAM ${ram_gb} ГБ всего, свободно на /home ${disk_gb} ГБ."
-            error "Основная модель на CPU занимает ещё ~11 ГБ, поэтому музыка идёт только осознанно:"
-            error "  MUSIC_ALLOW_CPU=1 ./deploy-ru.sh --with-music"
-            error "Порог автоматического включения — 30 ГБ RAM и 25 ГБ свободного диска."
-            exit 1
+            warn "Музыка на CPU: RAM ${ram_gb} ГБ и ${disk_gb} ГБ свободного диска — достаточно."
         fi
+        warn "Не запускайте генерацию видео и музыки одновременно: ~17 ГБ + ~15 ГБ RAM."
     fi
 }
 

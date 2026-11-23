@@ -73,6 +73,10 @@ DO NOT include: simple calculations (category 1), search (categories 5-6), conve
 NOT reasoning: a request to compose or generate music, a song, a track, a melody or background — that is ordinary chat WITHOUT a marker, the generate_music tool renders the audio file; prose in the answer does not replace a song.
 If the complex query needs fresh internet data — that is category 10.
 
+## 8.5 MUSIC — [-MUSIC-] and query
+Any request to CREATE music, a song, a track, a melody, background or a soundtrack: "make calm music", "write a song", "sing", "a track for a video".
+After the marker — the user's request as written. Categories 8 (reasoning) and 3 (video) do not apply.
+
 ## 9. REMEMBER — [-REMEMBER-] and query
 Only EXPLICIT requests: "remember", "don't forget", "save that", "запомни", "сохрани".
 NOT a request: "My name is John" (statement, category 1).

@@ -34,6 +34,8 @@ FEATURES: dict[str, list[tuple[str, str]]] = {
         # routing knows it is not video/image
         ("prompts/en/base_text.template", "generate_music"),
         ("prompts/ru/base_text.template", "generate_music"),
+        ("prompts/en/base_text.template", "[-MUSIC-]"),
+        ("prompts/ru/base_text.template", "[-MUSIC-]"),
         ("prompts/en/kernel.template", "generate_music"),
         # queue and configuration
         ("app/queue.py", '"music_gen"'),
